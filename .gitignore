@@ -1,0 +1,23 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+
+# Node / frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
+npm-debug.log*
+
+# Job temp dirs / generated packages
+/tmp/logo_jobs/
+*.zip
+!fixtures/**/*.zip
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
