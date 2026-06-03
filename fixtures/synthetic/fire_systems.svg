@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 160" width="460" height="160">
+  <defs>
+    <style>.red{fill:#ec1c24}.navy{fill:#112630}</style>
+  </defs>
+  <!-- ICON: a flame mark, brand red -->
+  <g id="Icon" data-name="Icon">
+    <path class="red" d="M80,18 C96,44 122,56 110,92 C104,118 78,132 58,112 C74,106 70,86 64,76 C72,90 86,82 80,72 C68,60 78,38 80,18 Z"/>
+  </g>
+  <!-- LOGOTYPE: stylized wordmark, brand navy -->
+  <g id="Logotype" data-name="Logotype">
+    <rect class="navy" x="185" y="55" width="14" height="60"/>
+    <rect class="navy" x="185" y="55" width="46" height="14"/>
+    <rect class="navy" x="185" y="78" width="34" height="13"/>
+    <rect class="navy" x="250" y="55" width="14" height="60"/>
+    <rect class="navy" x="285" y="55" width="14" height="60"/>
+    <rect class="navy" x="285" y="55" width="44" height="14"/>
+    <rect class="navy" x="285" y="101" width="44" height="14"/>
+    <rect class="navy" x="285" y="78" width="32" height="13"/>
+    <rect class="navy" x="350" y="55" width="14" height="60"/>
+    <rect class="navy" x="350" y="101" width="44" height="14"/>
+  </g>
+</svg>

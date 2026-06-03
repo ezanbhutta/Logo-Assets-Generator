@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 160" width="460" height="160">
+  <defs>
+    <style>.navy{fill:#112630}</style>
+    <!-- Mark-sized gradient (Illustrator pattern): userSpaceOnUse on the flame
+         bbox, diagonal. This is the §7.5 trap: it must be REBUILT to span a
+         full canvas rect, not pasted as-is. -->
+    <linearGradient id="flameGrad" x1="60" y1="18" x2="110" y2="120"
+                    gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffb000"/>
+      <stop offset="0.55" stop-color="#ff5a00"/>
+      <stop offset="1" stop-color="#ec1c24"/>
+    </linearGradient>
+  </defs>
+  <!-- ICON: gradient flame -->
+  <g id="Icon" data-name="Icon">
+    <path fill="url(#flameGrad)" d="M80,18 C96,44 122,56 110,92 C104,118 78,132 58,112 C74,106 70,86 64,76 C72,90 86,82 80,72 C68,60 78,38 80,18 Z"/>
+  </g>
+  <!-- LOGOTYPE: dark wordmark -->
+  <g id="Logotype" data-name="Logotype">
+    <rect class="navy" x="185" y="55" width="14" height="60"/>
+    <rect class="navy" x="185" y="55" width="46" height="14"/>
+    <rect class="navy" x="185" y="78" width="34" height="13"/>
+    <rect class="navy" x="250" y="55" width="14" height="60"/>
+    <rect class="navy" x="285" y="55" width="14" height="60"/>
+    <rect class="navy" x="285" y="55" width="44" height="14"/>
+    <rect class="navy" x="285" y="101" width="44" height="14"/>
+    <rect class="navy" x="285" y="78" width="32" height="13"/>
+    <rect class="navy" x="350" y="55" width="14" height="60"/>
+    <rect class="navy" x="350" y="101" width="44" height="14"/>
+  </g>
+</svg>
