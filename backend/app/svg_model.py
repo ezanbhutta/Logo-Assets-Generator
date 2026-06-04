@@ -30,6 +30,7 @@ class PathNode:
     fill: str | None            # resolved authored fill string ('#ec1c24', 'url(#g1)', 'none', ...)
     has_stroke: bool
     bbox: BBox | None           # (xmin, ymin, xmax, ymax) in user space, transforms resolved
+    is_background: bool = False  # full-page rect from PDF/AI export — not artwork ink
 
     @property
     def centroid(self) -> tuple[float, float] | None:
@@ -55,7 +56,36 @@ class WorkingSVG:
         self.parents = svgutil.build_parent_map(root)
         self._tag_leaves()
         self.nodes: list[PathNode] = self._build_nodes()
+        self._mark_background()
         self.by_lpid: dict[str, PathNode] = {n.lpid: n for n in self.nodes}
+
+    @property
+    def ink_nodes(self) -> list[PathNode]:
+        """Artwork leaves only — page/background rects excluded."""
+        return [n for n in self.nodes if not n.is_background]
+
+    def _mark_background(self) -> None:
+        """Flag leaves that span ~the whole page as background. PDF/AI exports
+        (pdf2svg, Illustrator) emit a full-page rect that is not artwork; left in
+        it inflates the bbox (logo renders tiny/off-center), pollutes color
+        detection, and corrupts selection. Never flag everything — if dropping
+        the candidates would leave no ink, keep them."""
+        vb = self.viewbox
+        if not vb:
+            return
+        vbw, vbh = vb[2] - vb[0], vb[3] - vb[1]
+        if vbw <= 0 or vbh <= 0:
+            return
+        candidates = []
+        for n in self.nodes:
+            if not n.bbox:
+                continue
+            w, h = n.bbox[2] - n.bbox[0], n.bbox[3] - n.bbox[1]
+            if w >= 0.9 * vbw and h >= 0.9 * vbh:
+                candidates.append(n)
+        if candidates and len(candidates) < len(self.nodes):
+            for n in candidates:
+                n.is_background = True
 
     # -- construction ---------------------------------------------------------
     @classmethod
@@ -110,7 +140,7 @@ class WorkingSVG:
 
     # -- geometry helpers -----------------------------------------------------
     def overall_bbox(self, lpids: list[str] | None = None) -> BBox | None:
-        sel = self.nodes if lpids is None else [self.by_lpid[i] for i in lpids if i in self.by_lpid]
+        sel = self.ink_nodes if lpids is None else [self.by_lpid[i] for i in lpids if i in self.by_lpid]
         boxes = [n.bbox for n in sel if n.bbox]
         if not boxes:
             return None

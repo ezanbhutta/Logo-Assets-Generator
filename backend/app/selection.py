@@ -42,7 +42,7 @@ def select_by_box(model: WorkingSVG, box: tuple[float, float, float, float]) -> 
     x0, y0, x1, y1 = x, y, x + w, y + h
     icon: list[str] = []
     wordmark: list[str] = []
-    for n in model.nodes:
+    for n in model.ink_nodes:
         c = n.centroid
         if c is not None and x0 <= c[0] <= x1 and y0 <= c[1] <= y1:
             icon.append(n.lpid)
@@ -83,10 +83,11 @@ def detect_named_layers(model: WorkingSVG) -> Selection | None:
     if icon_group is None:
         return None
 
-    icon_ids = _leaf_ids(icon_group)
+    ink = {n.lpid for n in model.ink_nodes}
+    icon_ids = [i for i in _leaf_ids(icon_group) if i in ink]
     if not icon_ids:
         return None
-    all_ids = [n.lpid for n in model.nodes]
+    all_ids = [n.lpid for n in model.ink_nodes]
     icon_set = set(icon_ids)
     wordmark = [i for i in all_ids if i not in icon_set]
     return Selection(icon=icon_ids, wordmark=wordmark, source="named-layers",
@@ -110,7 +111,7 @@ def resolve(model: WorkingSVG,
     # No box, no named layers: treat the whole artwork as a single (icon) group
     # so generation still produces a logo set; caller is expected to provide a
     # box for proper icon/wordmark separation.
-    all_ids = [n.lpid for n in model.nodes]
+    all_ids = [n.lpid for n in model.ink_nodes]
     return Selection(icon=all_ids, wordmark=[], source="box")
 
 

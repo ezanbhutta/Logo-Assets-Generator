@@ -99,12 +99,21 @@ Any Docker host works the same way — Railway, Fly.io, Cloud Run, a VPS.
 ├─ PDF/  Icon 01–05 · Logo 01–05
 ├─ SVG/  Icon 01–05 · Logo 01–05
 └─ Transparent/                    (edge-to-edge, no background)
-   ├─ PNG/  Icon 01–03 · Logo 01–04   (1080px wide, proportional)
+   ├─ PNG/  Icon 01–03 · Logo 01–04   (1080px logical, exported @2× → 2160px)
    ├─ SVG/  Icon 01–03 · Logo 01–04
    └─ PDF/  Icon 01–03 · Logo 01–04
 ```
 
 51 generated files + the two pass-through originals.
+
+**Raster quality:** JPG/PNG are exported at **@2×** density (JPG 3840×2160, PNG
+2160px wide) at JPEG quality 95; SVG/PDF stay vector. Tune with
+`LOGO_EXPORT_SCALE` (default `2`) and `LOGO_JPG_QUALITY` (default `95`).
+
+**Real `.ai` robustness:** PDF/Illustrator exports often include a full-page
+background rect and pt→px scaling. The engine detects and excludes page/
+background elements from the artwork, so the logo is centered (not rendered tiny
+in a corner), colors aren't polluted by the page, and the icon set isn't blanked.
 
 ## Hard rules enforced (§8)
 

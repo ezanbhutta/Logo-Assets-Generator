@@ -15,7 +15,7 @@ from pathlib import Path
 import cairosvg
 from PIL import Image
 
-from .config import CANVAS_W, CANVAS_H, PNG_WIDTH
+from .config import CANVAS_W, CANVAS_H, PNG_WIDTH, EXPORT_SCALE, JPG_QUALITY
 
 _RSVG = shutil.which("rsvg-convert")
 
@@ -24,21 +24,25 @@ def write_svg(svg_text: str, path: Path) -> None:
     path.write_text(svg_text, encoding="utf-8")
 
 
-def write_png_transparent(svg_text: str, path: Path, width: int = PNG_WIDTH) -> None:
-    """Rasterize to PNG at `width`px, proportional height, alpha preserved."""
+def write_png_transparent(svg_text: str, path: Path, width: int | None = None) -> None:
+    """Rasterize to PNG, proportional height, alpha preserved. Defaults to the
+    1080px logical width at @EXPORT_SCALE density (e.g. 2160px at @2x)."""
+    out_w = width if width is not None else PNG_WIDTH * EXPORT_SCALE
     cairosvg.svg2png(bytestring=svg_text.encode("utf-8"),
-                     write_to=str(path), output_width=width)
+                     write_to=str(path), output_width=out_w)
 
 
 def write_jpg(svg_text: str, path: Path,
               width: int = CANVAS_W, height: int = CANVAS_H) -> None:
-    """Rasterize the with-bg SVG at 1920×1080, flatten onto white, save JPG."""
+    """Rasterize the with-bg SVG (1920×1080 logical) at @EXPORT_SCALE density,
+    flatten onto white, save high-quality JPG."""
     png_bytes = cairosvg.svg2png(bytestring=svg_text.encode("utf-8"),
-                                 output_width=width, output_height=height)
+                                 output_width=width * EXPORT_SCALE,
+                                 output_height=height * EXPORT_SCALE)
     img = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
     flat = Image.new("RGB", img.size, (255, 255, 255))
     flat.paste(img, mask=img.split()[3])
-    flat.save(path, "JPEG", quality=92)
+    flat.save(path, "JPEG", quality=JPG_QUALITY, subsampling=0, optimize=True)
 
 
 def write_pdf(svg_text: str, path: Path) -> None:

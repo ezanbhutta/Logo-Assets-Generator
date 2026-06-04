@@ -1,4 +1,5 @@
 """Engine-wide constants. The fixture (§10) and locked spec (§5.2) drive these."""
+import os
 
 # --- Canvas (§5.2) -----------------------------------------------------------
 CANVAS_W = 1920
@@ -7,7 +8,14 @@ CANVAS_H = 1080
 SAFE_FRACTION = 0.65
 
 # --- Transparent raster (§5.2) ----------------------------------------------
-PNG_WIDTH = 1080  # transparent PNGs: 1080px wide, height proportional.
+PNG_WIDTH = 1080  # transparent PNGs: 1080px wide (logical), height proportional.
+
+# --- Raster export quality ---------------------------------------------------
+# Rasters are exported at @Nx pixel density for crisp, high-quality output
+# (vector SVG/PDF stay resolution-independent). Default @2x: JPG 3840x2160,
+# transparent PNG 2160px wide.
+EXPORT_SCALE = int(os.environ.get("LOGO_EXPORT_SCALE", "2"))
+JPG_QUALITY = int(os.environ.get("LOGO_JPG_QUALITY", "95"))
 
 # --- Canonical colors --------------------------------------------------------
 WHITE = "#ffffff"

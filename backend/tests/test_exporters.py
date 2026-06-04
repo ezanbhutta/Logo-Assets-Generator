@@ -2,6 +2,7 @@
 from PIL import Image
 
 from app import colors, selection, treatments
+from app.config import CANVAS_W, CANVAS_H, PNG_WIDTH, EXPORT_SCALE
 from app.exporters import (write_svg, write_jpg, write_pdf,
                            write_png_transparent, pdf_is_vector)
 from app.recipes import SOLID_LOGO, TRANSPARENT_LOGO
@@ -13,28 +14,29 @@ def _ctx(model):
     return treatments.build_context(model, sel, colors.detect(model))
 
 
-def test_jpg_is_1920x1080_rgb(solid_model, tmp_path):
+def test_jpg_is_16x9_at_export_scale_rgb(solid_model, tmp_path):
+    """With-bg JPG is 1920×1080 logical, rasterized at @EXPORT_SCALE (default @2x)."""
     ctx = _ctx(solid_model)
     svg = treatments.render_variant(ctx, "logo", SOLID_LOGO[0], True)
     out = tmp_path / "logo.jpg"
     write_jpg(svg, out)
     img = Image.open(out)
-    assert img.size == (1920, 1080)
+    assert img.size == (CANVAS_W * EXPORT_SCALE, CANVAS_H * EXPORT_SCALE)
     assert img.mode == "RGB"   # flattened, no alpha
 
 
-def test_png_is_1080_wide_with_alpha(solid_model, tmp_path):
+def test_png_is_1080_logical_wide_at_export_scale_with_alpha(solid_model, tmp_path):
     import re
     ctx = _ctx(solid_model)
     svg = treatments.render_variant(ctx, "icon", TRANSPARENT_LOGO[0], False)
     out = tmp_path / "icon.png"
     write_png_transparent(svg, out)
     img = Image.open(out)
-    assert img.width == 1080            # §5.2: transparent PNG is 1080px wide
-    assert img.mode in ("RGBA", "LA")   # alpha preserved
+    assert img.width == PNG_WIDTH * EXPORT_SCALE   # §5.2: 1080px logical @ Nx
+    assert img.mode in ("RGBA", "LA")              # alpha preserved
     # height is proportional to the tight artwork bbox (viewBox aspect).
     vb = [float(v) for v in re.search(r'viewBox="([^"]+)"', svg).group(1).split()]
-    expected_h = round(1080 * vb[3] / vb[2])
+    expected_h = round(PNG_WIDTH * EXPORT_SCALE * vb[3] / vb[2])
     assert abs(img.height - expected_h) <= 1
 
 

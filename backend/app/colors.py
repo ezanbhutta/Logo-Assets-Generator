@@ -199,7 +199,7 @@ def detect(model: WorkingSVG, lpids: list[str] | None = None,
 
     `exclude` drops CSR-removed strays from brand ranking; the brand overrides
     let the confirm UI lock the palette explicitly."""
-    nodes = model.nodes if lpids is None else [model.by_lpid[i] for i in lpids if i in model.by_lpid]
+    nodes = model.ink_nodes if lpids is None else [model.by_lpid[i] for i in lpids if i in model.by_lpid]
 
     grad_ids: list[str] = []
     for n in nodes:
