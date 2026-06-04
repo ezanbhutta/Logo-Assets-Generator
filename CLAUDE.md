@@ -43,8 +43,11 @@ logo delivery package as a `.zip`. Upload → zip out. No DB, no auth.
   the **logo set only** (27 files). Never force/auto-ship an icon the CSR didn't ask for.
 - **Ignore extras** found in reference zips — social cover photos
   (Facebook/LinkedIn/Twitter-X/YouTube), brand guidelines, business cards,
-  Instagram templates, per-variant EPS, AI/EPS-in-folders. Not generated.
-  (Possible future feature: auto social covers — flagged, not built.)
+  Instagram templates, **iconography sets**, per-variant EPS, AI/EPS-in-folders,
+  bare `Artboard N` exports. Not generated. (Possible future feature: auto
+  social covers — flagged, not built.)
+- **Treatment counts are fixed at 5+5 (with-bg) / 3+4 (transparent).** Some
+  older packages ran extended sets (e.g. Logo 01–10); the locked standard is 5.
 - **Raster quality:** @2× (env `LOGO_EXPORT_SCALE`, default 2), JPEG quality 95
   (4:4:4). SVG/PDF stay vector. Transparent PNG = 1080px logical @2× = 2160px wide.
 
