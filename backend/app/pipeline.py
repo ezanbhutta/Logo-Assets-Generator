@@ -185,7 +185,7 @@ def run_generate(req: GenerateRequest, workdir: Path) -> GenerateResult:
 
     marks = ([("icon", ICON_STEM)] if include_icon else []) + [("logo", LOGO_STEM)]
     for mark, stem in marks:
-        # --- with-background (JPG/PDF/SVG @ 1920x1080) ---
+        # --- with-background (JPEG/PDF/SVG @ 1920x1080) ---
         for t in with_bg_recipes(mark, report.is_gradient):
             svg = treatments.render_variant(ctx, mark, t, with_background=True)
             write_svg(svg, builder.svg / variant_filename(stem, t.index, "svg"))

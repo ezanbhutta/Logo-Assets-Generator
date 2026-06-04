@@ -2,17 +2,14 @@
 import os
 
 # --- Canvas -----------------------------------------------------------------
-# SQUARE artboards, matching the ground-truth reference packages (Fire Systems
-# 1080², MpCarney 1200²) — exported at @EXPORT_SCALE (default @2x → 2160²).
-CANVAS_W = 1080
+# FIXED 1920x1080 artboard on every with-background format (locked standard).
+# The logo is centered and scaled to fit; rasters export at @EXPORT_SCALE.
+CANVAS_W = 1920
 CANVAS_H = 1080
-# Logo cap: the lockup keeps its NATIVE composition size from the source
-# artboard (designers compose with margins), but never exceeds this fraction of
-# the canvas — protects tightly-cropped sources from touching the edges.
-SAFE_FRACTION = 0.66
-# Icon variants are re-centered and normalized to this fraction of the canvas
-# (the bare mark from a lockup has an arbitrary native size). Matches the
-# reference icon sizing (~0.29–0.31 longest side).
+# Logo's longest side <= ~65% of the corresponding canvas dimension, centered.
+SAFE_FRACTION = 0.65
+# Icon variants: re-centered, longest side normalized to this fraction of the
+# shorter canvas dimension.
 ICON_FRACTION = 0.30
 
 # --- Transparent raster (§5.2) ----------------------------------------------

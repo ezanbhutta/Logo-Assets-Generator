@@ -14,7 +14,7 @@ def _primary(summ):
 
 # Expected §5.1 tree (relative to the root folder), brand "Acme".
 EXPECTED = {
-    "JPG": [f"{s} {i:02d}.jpg" for s in ("Icon", "Logo") for i in range(1, 6)],
+    "JPEG": [f"{s} {i:02d}.jpg" for s in ("Icon", "Logo") for i in range(1, 6)],
     "PDF": [f"{s} {i:02d}.pdf" for s in ("Icon", "Logo") for i in range(1, 6)],
     "SVG": [f"{s} {i:02d}.svg" for s in ("Icon", "Logo") for i in range(1, 6)],
     "Transparent/PNG": [f"Icon {i:02d}.png" for i in range(1, 4)] +
@@ -69,8 +69,8 @@ def test_zip_top_folder_is_brand_files(solid_svg, tmp_path):
 
 def test_naming_zero_padded_space_before_number(solid_svg, tmp_path):
     res = _generate(solid_svg, tmp_path)
-    assert "Acme Files/JPG/Icon 01.jpg" in res.manifest
-    assert "Acme Files/JPG/Logo 05.jpg" in res.manifest
+    assert "Acme Files/JPEG/Icon 01.jpg" in res.manifest
+    assert "Acme Files/JPEG/Logo 05.jpg" in res.manifest
 
 
 def test_no_box_generates_logo_only(tmp_path):

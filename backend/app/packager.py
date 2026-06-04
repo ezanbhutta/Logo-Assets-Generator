@@ -14,7 +14,7 @@ class PackageBuilder:
     def __init__(self, brand: str, workdir: Path):
         self.brand = brand
         self.root = workdir / root_folder_name(brand)
-        self.jpg = self.root / "JPG"
+        self.jpg = self.root / "JPEG"   # client-facing term (JPEG == JPG)
         self.pdf = self.root / "PDF"
         self.svg = self.root / "SVG"
         self.t_png = self.root / "Transparent" / "PNG"

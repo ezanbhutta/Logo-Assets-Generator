@@ -239,8 +239,8 @@ def _fmt(v: float) -> str:
 def _render_with_bg(ctx: TreatmentContext, vroot: etree._Element, art: BBox,
                     mark: str, bg: tuple[str, object]) -> str:
     head, content = _split_head_content(vroot)
-    S = CANVAS_W  # square canvas
-    out = _new_svg(S, S, f"0 0 {S} {S}")
+    W, H = CANVAS_W, CANVAS_H
+    out = _new_svg(W, H, f"0 0 {W} {H}")
 
     defs = etree.SubElement(out, qn("defs"))
     for h in head:
@@ -255,14 +255,14 @@ def _render_with_bg(ctx: TreatmentContext, vroot: etree._Element, art: BBox,
 
     rect = etree.SubElement(out, qn("rect"))
     rect.set("x", "0"); rect.set("y", "0")
-    rect.set("width", str(S)); rect.set("height", str(S))
+    rect.set("width", str(W)); rect.set("height", str(H))
     rect.set("fill", bg_fill)
 
-    s = _placement_scale(ctx, art, mark, S)
+    s = _placement_scale(art, mark)
     ax0, ay0, ax1, ay1 = art
     acx, acy = (ax0 + ax1) / 2.0, (ay0 + ay1) / 2.0
-    tx = S / 2.0 - s * acx
-    ty = S / 2.0 - s * acy
+    tx = W / 2.0 - s * acx
+    ty = H / 2.0 - s * acy
     g = etree.SubElement(out, qn("g"))
     g.set("transform", f"translate({tx:.4f},{ty:.4f}) scale({s:.6f})")
     for c in content:
@@ -270,25 +270,18 @@ def _render_with_bg(ctx: TreatmentContext, vroot: etree._Element, art: BBox,
     return etree.tostring(out, encoding="unicode")
 
 
-def _placement_scale(ctx: TreatmentContext, art: BBox, mark: str, S: int) -> float:
-    """Scale for centering the mark on the square canvas (matches the reference
-    packages):
+def _placement_scale(art: BBox, mark: str) -> float:
+    """Scale to center the mark on the fixed 1920x1080 canvas.
 
-    * **logo** — keep the NATIVE composition size from the source artboard
-      (`S / vb_side`), capped at SAFE_FRACTION so tightly-cropped sources don't
-      bleed to the edges. Well-composed square artboards land at their designed
-      size (Fire ≈50%, MpCarney ≈64%).
-    * **icon** — the bare mark has an arbitrary native size, so normalize its
-      longest side to ICON_FRACTION of the canvas.
+    * **logo** — fit within SAFE_FRACTION of each canvas dimension (§5.2).
+    * **icon** — normalize the longest side to ICON_FRACTION of the shorter
+      canvas dimension (the bare mark has an arbitrary native size).
     """
     ax0, ay0, ax1, ay1 = art
-    maxside = max(ax1 - ax0, ay1 - ay0, 1e-6)
+    aw, ah = max(ax1 - ax0, 1e-6), max(ay1 - ay0, 1e-6)
     if mark == "icon":
-        return ICON_FRACTION * S / maxside
-    vb = ctx.model.viewbox
-    vb_side = max(vb[2] - vb[0], vb[3] - vb[1]) if vb else S
-    vb_side = max(vb_side, 1e-6)
-    return min(S / vb_side, SAFE_FRACTION * S / maxside)
+        return ICON_FRACTION * min(CANVAS_W, CANVAS_H) / max(aw, ah)
+    return min(SAFE_FRACTION * CANVAS_W / aw, SAFE_FRACTION * CANVAS_H / ah)
 
 
 def _render_transparent(ctx: TreatmentContext, vroot: etree._Element, art: BBox) -> str:
