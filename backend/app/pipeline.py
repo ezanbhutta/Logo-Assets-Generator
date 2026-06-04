@@ -86,6 +86,7 @@ class GenerateResult:
     is_gradient: bool
     brand_a: str
     brand_b: str
+    include_icon: bool = True
 
 
 def run_generate(req: GenerateRequest, workdir: Path) -> GenerateResult:
@@ -100,14 +101,27 @@ def run_generate(req: GenerateRequest, workdir: Path) -> GenerateResult:
     if not report.supported:
         raise ManualFlag(report.reasons)  # §8 rule 6: no partial package
 
-    # Box first; if it misses (empty icon) fall back to named layers, then to
-    # automatic spatial extraction so the icon set is never blank.
-    sel = selection.resolve(model, req.selection_box)
+    # The icon set is OPTIONAL. Generate it only when the CSR marked the icon
+    # (a box) or the file has named layers; otherwise produce just the logo
+    # design files — don't force an icon (per request).
+    if req.selection_box is not None:
+        sel = selection.resolve(model, req.selection_box)  # box, with fallback
+        include_icon = True
+    else:
+        named = selection.detect_named_layers(model)
+        if named is not None and named.icon:
+            sel = named
+            include_icon = True
+        else:
+            sel = selection.Selection(
+                icon=[], wordmark=[n.lpid for n in model.ink_nodes], source="none")
+            include_icon = False
 
     ctx = treatments.build_context(model, sel, report)
     builder = PackageBuilder(req.brand, workdir)
 
-    for mark, stem in (("icon", ICON_STEM), ("logo", LOGO_STEM)):
+    marks = ([("icon", ICON_STEM)] if include_icon else []) + [("logo", LOGO_STEM)]
+    for mark, stem in marks:
         # --- with-background (JPG/PDF/SVG @ 1920x1080) ---
         for t in with_bg_recipes(mark, report.is_gradient):
             svg = treatments.render_variant(ctx, mark, t, with_background=True)
@@ -132,4 +146,5 @@ def run_generate(req: GenerateRequest, workdir: Path) -> GenerateResult:
         is_gradient=report.is_gradient,
         brand_a=report.brand_a,
         brand_b=report.brand_b,
+        include_icon=include_icon,
     )

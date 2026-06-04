@@ -83,9 +83,11 @@ Any Docker host works the same way — Railway, Fly.io, Cloud Run, a VPS.
 
 1. **Brand name** — defaults to the `.ai` filename.
 2. **Upload** `.ai` + `.eps`. Backend converts `.ai`→SVG and returns it.
-3. **Mark the icon** — drag one box on the live vector preview (or confirm a
-   detected named layer). Icon = paths whose centroid is inside the box;
-   **wordmark = every other path** (no second drag).
+3. **Mark the icon (optional)** — drag one box on the live vector preview (or
+   confirm a detected named layer). Icon = paths whose centroid is inside the
+   box; **wordmark = every other path** (no second drag). **Skip it** and the
+   package contains the **logo design files only** — the icon set is never
+   forced.
 4. **Confirm colors** — detected brand colors/gradient appear as swatches;
    remove a stray before it propagates into 50+ files.
 5. **Generate** — download the `.zip`.

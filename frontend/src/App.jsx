@@ -93,7 +93,9 @@ export default function App() {
             />
             {mode === "box" && (
               <p className="mb-2 text-xs text-slate-500">
-                Drag one box around the icon. Everything outside becomes the wordmark.
+                Drag one box around the icon to also get the icon set.{" "}
+                <span className="text-slate-400">Optional</span> — skip it and only
+                the logo design files are generated.
               </p>
             )}
             <SvgPreview
@@ -135,14 +137,20 @@ export default function App() {
                 converter: {result.converter} · {result.is_gradient ? "gradient" : "solid"} recipes
               </div>
               <button
-                disabled={busy || (mode === "box" && !box)}
+                disabled={busy}
                 onClick={handleGenerate}
                 className="w-full rounded-md bg-brand-red py-2.5 font-medium text-white disabled:opacity-40"
               >
-                {busy ? "Building package…" : "Generate & download .zip"}
+                {busy
+                  ? "Building package…"
+                  : mode === "box" && !box
+                  ? "Generate logo files (no icon) →"
+                  : "Generate & download .zip"}
               </button>
               {mode === "box" && !box && (
-                <p className="mt-2 text-xs text-amber-600">Draw the icon box first.</p>
+                <p className="mt-2 text-xs text-slate-500">
+                  No icon box drawn — the package will contain the logo set only.
+                </p>
               )}
               {done && (
                 <Banner tone="ok">

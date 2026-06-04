@@ -68,6 +68,30 @@ def test_naming_zero_padded_space_before_number(solid_svg, tmp_path):
     assert "Acme Files/JPG/Logo 05.jpg" in res.manifest
 
 
+def test_no_box_generates_logo_only(tmp_path):
+    """Icon is optional: with no box and no named layers, only the logo design
+    files are produced (no Icon set)."""
+    # a flat SVG (no named Icon/Logotype groups)
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 160">'
+           '<path d="M80,18 L110,92 L58,112 Z" fill="#ec1c24"/>'
+           '<rect x="185" y="55" width="14" height="60" fill="#112630"/>'
+           '<rect x="250" y="55" width="14" height="60" fill="#112630"/></svg>')
+    src = tmp_path / "in.svg"; src.write_bytes(svg.encode())
+    summ = run_ingest(src, tmp_path)
+    res = run_generate(GenerateRequest(brand="Acme", working_svg=summ.working_svg,
+                                       selection_box=None), tmp_path)
+    assert res.include_icon is False
+    assert not any("/Icon " in m for m in res.manifest)        # no icon files
+    assert any("/Logo 05.jpg" in m for m in res.manifest)      # full logo set present
+    assert len([m for m in res.manifest if "/Logo " in m]) == 27
+
+
+def test_box_generates_both_sets(solid_svg, tmp_path):
+    res = _generate(solid_svg, tmp_path)
+    assert res.include_icon is True
+    assert any("/Icon 01.jpg" in m for m in res.manifest)
+
+
 def test_manual_flag_refuses_no_partial_zip(oos_svg, tmp_path):
     src = tmp_path / "oos.svg"; src.write_bytes(oos_svg)
     summ = run_ingest(src, tmp_path)
