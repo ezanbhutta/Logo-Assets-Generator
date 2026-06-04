@@ -140,12 +140,17 @@ def test_transparent_svg_is_zero_origin_and_edge_to_edge(solid_model):
     """Transparent SVGs use a ZERO-origin viewBox (0 0 w h) and the artwork
     fills it edge-to-edge. A non-zero origin renders with white letterboxing in
     Finder/Illustrator (the Eveline case)."""
+    import io
     import re
+    import cairosvg
+    from PIL import Image
     ctx, _ = _ctx(solid_model)
     svg = treatments.render_variant(ctx, "logo", TRANSPARENT_LOGO[0], False)
     vb = re.search(r'viewBox="([^"]+)"', svg).group(1)
     assert vb.startswith("0 0 "), f"transparent viewBox not zero-origin: {vb}"
-    img = render(svg, w=400, h=400).convert("RGBA")
+    # render at the SVG's natural aspect (proportional height — no letterboxing)
+    png = cairosvg.svg2png(bytestring=svg.encode("utf-8"), output_width=600)
+    img = Image.open(io.BytesIO(png)).convert("RGBA")
     bb = img.getbbox()                         # bbox of non-transparent pixels
     W, H = img.size
     # ink reaches every edge (within a couple px of antialiasing)
