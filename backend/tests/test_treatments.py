@@ -3,6 +3,7 @@ import pytest
 
 from app import colors, selection, treatments
 from app.config import CANVAS_W, CANVAS_H
+from app.svg_model import WorkingSVG
 from app.recipes import (SOLID_LOGO, SOLID_ICON, GRADIENT_LOGO,
                          TRANSPARENT_LOGO, with_bg_recipes)
 from conftest import render, near, ICON_BOX
