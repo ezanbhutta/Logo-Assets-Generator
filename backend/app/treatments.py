@@ -19,7 +19,7 @@ from PIL import Image
 from . import config
 from .config import (CANVAS_W, CANVAS_H, SAFE_FRACTION, ICON_FRACTION,
                     SVG_NS, XLINK_NS, LPID_ATTR)
-from .colors import normalize_hex
+from .colors import normalize_hex, contrast_ratio, best_knockout
 from .gradients import GradientSpec, parse_gradient, build_canvas_gradient
 from .recipes import Treatment
 from .selection import Selection
@@ -110,8 +110,15 @@ def _copy_pruned(ctx: TreatmentContext, include: set[str]) -> etree._Element:
     return vroot
 
 
+# Below this fg/bg contrast ratio an element is effectively invisible -> knock
+# it out to a visible color (e.g. a single-color logo on its own brand bg).
+MIN_CONTRAST = 2.2
+
+_LEAVES = {"path", "rect", "circle", "ellipse", "polygon", "polyline", "line"}
+
+
 def _recolor(ctx: TreatmentContext, vroot: etree._Element, treatment: Treatment,
-             mark: str) -> None:
+             mark: str, bg: tuple[str, object] | None = None) -> None:
     icon = set(ctx.selection.icon)
     color = None
     if treatment.recolor == "white":
@@ -120,8 +127,7 @@ def _recolor(ctx: TreatmentContext, vroot: etree._Element, treatment: Treatment,
         color = config.BLACK
 
     for el in vroot.iter():
-        if local_name(el) not in {"path", "rect", "circle", "ellipse",
-                                  "polygon", "polyline", "line"}:
+        if local_name(el) not in _LEAVES:
             continue
         lpid = el.get(LPID_ATTR)
         node = ctx.model.by_lpid.get(lpid)
@@ -134,6 +140,43 @@ def _recolor(ctx: TreatmentContext, vroot: etree._Element, treatment: Treatment,
             continue
         if color is not None:
             _apply(el, color, node)
+
+    # Contrast guard: ensure the artwork is actually visible on a solid bg.
+    if bg and bg[0] == "solid":
+        _ensure_contrast(ctx, vroot, treatment, mark, bg[1])
+
+
+def _effective_fg(treatment: Treatment, mark: str, lpid: str, node,
+                  icon: set[str]) -> str | None:
+    """The solid color an element ends up as for this treatment, or None when it
+    keeps a gradient (which spans a range and is left alone)."""
+    r = treatment.recolor
+    if r == "white":
+        return config.WHITE
+    if r == "black":
+        return config.BLACK
+    if r == "split" and mark == "logo" and lpid not in icon:
+        return config.WHITE
+    return normalize_hex(node.fill) if node else None
+
+
+def _ensure_contrast(ctx: TreatmentContext, vroot: etree._Element,
+                     treatment: Treatment, mark: str, bg_value: object) -> None:
+    """Flip any element that would blend into the background to white/black —
+    whichever reads. Fixes single-color logos whose color equals the brand
+    background (e.g. a purple mark on the purple brand-A slot)."""
+    bg_hex = normalize_hex(bg_value)
+    if not bg_hex:
+        return
+    icon = set(ctx.selection.icon)
+    knock = best_knockout(bg_hex)
+    for el in vroot.iter():
+        if local_name(el) not in _LEAVES:
+            continue
+        node = ctx.model.by_lpid.get(el.get(LPID_ATTR))
+        fg = _effective_fg(treatment, mark, el.get(LPID_ATTR), node, icon)
+        if fg and contrast_ratio(fg, bg_hex) < MIN_CONTRAST:
+            _apply(el, knock, node)
 
 
 def _apply(el: etree._Element, color: str, node) -> None:
@@ -194,7 +237,7 @@ def _fmt(v: float) -> str:
 
 
 def _render_with_bg(ctx: TreatmentContext, vroot: etree._Element, art: BBox,
-                    treatment: Treatment, mark: str) -> str:
+                    mark: str, bg: tuple[str, object]) -> str:
     head, content = _split_head_content(vroot)
     S = CANVAS_W  # square canvas
     out = _new_svg(S, S, f"0 0 {S} {S}")
@@ -203,7 +246,7 @@ def _render_with_bg(ctx: TreatmentContext, vroot: etree._Element, art: BBox,
     for h in head:
         defs.append(h)
 
-    kind, value = _resolve_bg(ctx, treatment.background)
+    kind, value = bg
     if kind == "gradient":
         defs.append(value)
         bg_fill = "url(#bgGradient)"
@@ -268,10 +311,12 @@ def render_variant(ctx: TreatmentContext, mark: str, treatment: Treatment,
     """Render one variant SVG string for `mark` ('icon'|'logo')."""
     include = set(_include_ids(ctx, mark))
     vroot = _copy_pruned(ctx, include)
-    _recolor(ctx, vroot, treatment, mark)
+    # Resolve the background first so recolor can enforce fg/bg contrast.
+    bg = _resolve_bg(ctx, treatment.background) if with_background else None
+    _recolor(ctx, vroot, treatment, mark, bg)
     art = _visible_bbox(ctx, mark, include)
     if art is None:
         art = ctx.model.viewbox or (0.0, 0.0, float(CANVAS_W), float(CANVAS_H))
     if with_background:
-        return _render_with_bg(ctx, vroot, art, treatment, mark)
+        return _render_with_bg(ctx, vroot, art, mark, bg)
     return _render_transparent(ctx, vroot, art)

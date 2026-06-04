@@ -67,6 +67,19 @@ def is_light(hex_color: str) -> bool:
     return luminance(hex_color) >= config.LIGHT_LUMINANCE_THRESHOLD
 
 
+def contrast_ratio(a: str, b: str) -> float:
+    """WCAG contrast ratio between two hex colors (1.0 == identical)."""
+    la, lb = luminance(a), luminance(b)
+    hi, lo = max(la, lb), min(la, lb)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def best_knockout(bg_hex: str) -> str:
+    """White or black — whichever is more visible on `bg_hex`."""
+    return config.WHITE if contrast_ratio(config.WHITE, bg_hex) >= \
+        contrast_ratio(config.BLACK, bg_hex) else config.BLACK
+
+
 def _is_brand_color(hex_color: str) -> bool:
     """Chromatic (has hue) and not near-white -> eligible as a brand color."""
     return saturation(hex_color) >= _NEUTRAL_SAT and luminance(hex_color) < config.NEAR_WHITE_LUMINANCE

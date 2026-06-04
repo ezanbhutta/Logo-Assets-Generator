@@ -72,6 +72,35 @@ def test_icon_variant_uses_only_icon_paths(solid_model):
     assert leaves(logo) == 12
 
 
+def test_single_color_logo_stays_visible_on_brand_bg():
+    """Contrast guard: a single-color logo on its own brand-A background must
+    NOT vanish — it's knocked out to a visible color (the APEX case)."""
+    purple = "#7a2fb0"
+    svg = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">'
+           f'<path d="M120,90 L180,70 L240,90 L180,110 Z" fill="{purple}"/>'
+           f'<rect x="150" y="170" width="100" height="40" fill="{purple}"/></svg>')
+    m = WorkingSVG.from_string(svg)
+    rep = colors.detect(m)
+    assert rep.brand_a == purple
+    sel = selection.select_by_box(m, (110, 60, 150, 70))
+    ctx = treatments.build_context(m, sel, rep)
+    # Icon 02 = brand-A (purple) background, icon "in its own color"
+    img = render(treatments.render_variant(ctx, "icon", SOLID_ICON[1], True)).convert("RGB")
+    bg = img.getpixel((20, 20))
+    ink = sum(1 for x in range(0, CANVAS_W, 8) for y in range(0, CANVAS_H, 8)
+              if not near(img.getpixel((x, y)), bg, tol=28))
+    assert ink > 0, "single-color icon disappeared on its own brand background"
+
+
+def test_contrast_guard_keeps_two_color_logo(solid_model):
+    """The guard must NOT disturb a well-contrasting 2-color logo: Fire's red
+    icon stays red on the navy brand-A background (split treatment)."""
+    ctx, _ = _ctx(solid_model)
+    img = render(treatments.render_variant(ctx, "logo", SOLID_LOGO[1], True)).convert("RGB")
+    reds = sum(near(img.getpixel((x, MID)), (236, 28, 36)) for x in range(0, CANVAS_W, 4))
+    assert reds > 0   # icon kept its red, not knocked out
+
+
 def test_gradient_hero_white_knockout_on_rebuilt_gradient(gradient_model):
     """§6.4/02 + §8 rules 4&5: Logo 02 = white art on a full-bleed rebuilt
     gradient. Background differs corner-to-corner (gradient really spans)."""
