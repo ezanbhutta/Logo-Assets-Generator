@@ -5,6 +5,7 @@ services:
   - type: web
     name: logo-assets-generator
     runtime: docker
+    branch: main               # deploy from main (the default branch)
     plan: free                 # bump to 'starter' for always-on + more RAM
     dockerfilePath: ./Dockerfile
     healthCheckPath: /health
