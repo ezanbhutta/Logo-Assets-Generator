@@ -3,6 +3,8 @@ import Uploader from "./components/Uploader.jsx";
 import SvgPreview from "./components/SvgPreview.jsx";
 import ColorConfirm from "./components/ColorConfirm.jsx";
 import ArtboardChooser from "./components/ArtboardChooser.jsx";
+import TopBar from "./components/TopBar.jsx";
+import Steps from "./components/Steps.jsx";
 import { ingest, generate, downloadBlob } from "./api.js";
 
 export default function App() {
@@ -85,14 +87,25 @@ export default function App() {
     setError(null);
   }
 
+  const currentStep = done ? 4 : !result ? 1 : chosen == null ? 2 : 3;
+
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8">
-      <header className="mb-6">
-        <h1 className="text-2xl font-bold text-brand-navy">Logo Package Engine</h1>
-        <p className="text-sm text-slate-500">
-          Upload a primary logo → mark the icon → confirm colors → download the full package.
-        </p>
-      </header>
+    <div className="min-h-full">
+      <TopBar onNew={reset} showNew={!!result} />
+
+      <div className="pt-7">
+        <Steps current={currentStep} />
+      </div>
+
+      <main className="mx-auto max-w-6xl px-4 pb-20">
+        <div className="mb-6">
+          <h1 className="text-xl font-bold tracking-tight text-slate-800">
+            Logo Package Engine
+          </h1>
+          <p className="text-sm text-slate-500">
+            Upload a primary logo → pick the artboard → mark the icon → confirm colors → download.
+          </p>
+        </div>
 
       {error && (
         <Banner tone="error" onClose={() => setError(null)}>{error}</Banner>
@@ -195,15 +208,30 @@ export default function App() {
                 </p>
               )}
               {done && (
-                <Banner tone="ok">
-                  Package downloaded as <strong>{brand} Files.zip</strong>.{" "}
-                  <button className="underline" onClick={reset}>Start another</button>
-                </Banner>
+                <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                  <p className="text-sm text-emerald-800">
+                    ✓ Downloaded <strong>{brand} Files.zip</strong>.
+                  </p>
+                  <button
+                    onClick={reset}
+                    className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-brand-navy px-3.5 py-2 text-sm font-medium text-white hover:bg-[#1c3d4f]"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+                      <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+                    </svg>
+                    Generate new
+                  </button>
+                </div>
               )}
             </div>
           </Card>
         </div>
       )}
+      </main>
+
+      <footer className="border-t border-slate-200 py-5 text-center text-xs text-slate-400">
+        HaseebMadeIt · Logo Package Engine — upload → zip
+      </footer>
     </div>
   );
 }
@@ -254,7 +282,9 @@ function ManualFlag({ reasons, onReset }) {
 }
 
 const Card = ({ children }) => (
-  <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">{children}</div>
+  <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm ring-1 ring-black/[0.02]">
+    {children}
+  </div>
 );
 
 const StepHeader = ({ n, title }) => (
