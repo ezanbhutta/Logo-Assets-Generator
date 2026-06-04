@@ -288,13 +288,20 @@ def _render_transparent(ctx: TreatmentContext, vroot: etree._Element, art: BBox)
     head, content = _split_head_content(vroot)
     ax0, ay0, ax1, ay1 = art
     w, h = max(ax1 - ax0, 1e-6), max(ay1 - ay0, 1e-6)
-    out = _new_svg(w, h, f"{ax0:.4f} {ay0:.4f} {w:.4f} {h:.4f}")
+    # Zero-origin viewBox: translate the artwork to (0,0) and frame it at
+    # "0 0 w h". A non-zero viewBox origin is valid SVG but Finder/Illustrator
+    # render it with white letterboxing (looks like padding) — this makes the
+    # transparent SVG truly edge-to-edge in every viewer. The translate also
+    # shifts userSpaceOnUse gradient space, so gradients stay aligned.
+    out = _new_svg(w, h, f"0 0 {w:.4f} {h:.4f}")
     if head:
         defs = etree.SubElement(out, qn("defs"))
         for hch in head:
             defs.append(hch)
+    g = etree.SubElement(out, qn("g"))
+    g.set("transform", f"translate({-ax0:.4f},{-ay0:.4f})")
     for c in content:
-        out.append(c)
+        g.append(c)
     return etree.tostring(out, encoding="unicode")
 
 

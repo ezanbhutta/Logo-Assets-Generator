@@ -136,6 +136,22 @@ def test_transparent_has_tight_viewbox_no_bg(solid_model):
     assert img.convert("RGBA").getpixel((1, 1))[3] == 0
 
 
+def test_transparent_svg_is_zero_origin_and_edge_to_edge(solid_model):
+    """Transparent SVGs use a ZERO-origin viewBox (0 0 w h) and the artwork
+    fills it edge-to-edge. A non-zero origin renders with white letterboxing in
+    Finder/Illustrator (the Eveline case)."""
+    import re
+    ctx, _ = _ctx(solid_model)
+    svg = treatments.render_variant(ctx, "logo", TRANSPARENT_LOGO[0], False)
+    vb = re.search(r'viewBox="([^"]+)"', svg).group(1)
+    assert vb.startswith("0 0 "), f"transparent viewBox not zero-origin: {vb}"
+    img = render(svg, w=400, h=400).convert("RGBA")
+    bb = img.getbbox()                         # bbox of non-transparent pixels
+    W, H = img.size
+    # ink reaches every edge (within a couple px of antialiasing)
+    assert bb[0] <= 2 and bb[1] <= 2 and bb[2] >= W - 2 and bb[3] >= H - 2
+
+
 def test_placement_within_safe_margins(solid_model):
     """Artwork longest side <= ~65% of the canvas (§5.2)."""
     ctx, _ = _ctx(solid_model)
