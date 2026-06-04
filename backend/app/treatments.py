@@ -9,9 +9,12 @@ Each variant is built by:
 from __future__ import annotations
 
 import copy
-from dataclasses import dataclass
+import io
+from dataclasses import dataclass, field
 
+import cairosvg
 from lxml import etree
+from PIL import Image
 
 from . import config
 from .config import (CANVAS_W, CANVAS_H, SAFE_FRACTION, ICON_FRACTION,
@@ -30,6 +33,7 @@ class TreatmentContext:
     selection: Selection
     report: "object"            # colors.ColorReport (avoid import cycle in hints)
     grad_spec: GradientSpec | None
+    _vis_bbox: dict = field(default_factory=dict)   # mark -> visible bbox cache
 
 
 def build_context(model: WorkingSVG, selection: Selection, report) -> TreatmentContext:
@@ -48,6 +52,49 @@ def _include_ids(ctx: TreatmentContext, mark: str) -> list[str]:
     if mark == "icon":
         return list(ctx.selection.icon)
     return list(ctx.selection.full)
+
+
+# --- visible (rendered) bbox -------------------------------------------------
+def _visible_bbox(ctx: TreatmentContext, mark: str, include: set[str]) -> BBox | None:
+    """Bounding box of the artwork's actually-rendered pixels (cached per mark).
+
+    Centering on this — not the raw vector bbox — keeps the mark visually
+    centered even when the source carries invisible/fill:none guides, clip
+    outlines, or stray off-mark elements that would otherwise skew the bbox and
+    push the logo to a corner/edge. Output stays vector; only the placement
+    offset is measured from a render.
+    """
+    if mark in ctx._vis_bbox:
+        return ctx._vis_bbox[mark]
+    vb = ctx.model.viewbox
+    bb = None
+    if vb:
+        bb = _alpha_bbox_userspace(_copy_pruned(ctx, include), vb)
+    if bb is None:
+        bb = ctx.model.overall_bbox(list(include))
+    ctx._vis_bbox[mark] = bb
+    return bb
+
+
+def _alpha_bbox_userspace(vroot: etree._Element, viewbox: BBox,
+                          render_px: int = 1000) -> BBox | None:
+    vbx0, vby0, vbx1, vby1 = viewbox
+    vbw, vbh = vbx1 - vbx0, vby1 - vby0
+    if vbw <= 0 or vbh <= 0:
+        return None
+    scale = render_px / max(vbw, vbh)
+    w, h = max(1, round(vbw * scale)), max(1, round(vbh * scale))
+    try:
+        png = cairosvg.svg2png(bytestring=etree.tostring(vroot),
+                               output_width=w, output_height=h)
+        box = Image.open(io.BytesIO(png)).getbbox()   # non-transparent extent
+    except Exception:
+        return None
+    if not box:
+        return None
+    px0, py0, px1, py1 = box
+    return (vbx0 + px0 / scale, vby0 + py0 / scale,
+            vbx0 + px1 / scale, vby0 + py1 / scale)
 
 
 # --- prune + recolor ---------------------------------------------------------
@@ -222,7 +269,7 @@ def render_variant(ctx: TreatmentContext, mark: str, treatment: Treatment,
     include = set(_include_ids(ctx, mark))
     vroot = _copy_pruned(ctx, include)
     _recolor(ctx, vroot, treatment, mark)
-    art = ctx.model.overall_bbox(list(include))
+    art = _visible_bbox(ctx, mark, include)
     if art is None:
         art = ctx.model.viewbox or (0.0, 0.0, float(CANVAS_W), float(CANVAS_H))
     if with_background:

@@ -98,21 +98,52 @@ def _leaf_ids(group: etree._Element) -> list[str]:
     return [el.get(LPID_ATTR) for el in iter_leaves(group) if el.get(LPID_ATTR)]
 
 
+def auto_icon(model: WorkingSVG) -> Selection:
+    """Guess the icon vs wordmark with no box: split the lockup at its largest
+    gap (along whichever axis the artwork is more elongated), then call the
+    more square-shaped cluster the icon (wordmarks are wide-and-short). Ensures
+    the icon set is never empty when a hand-drawn box misses."""
+    nodes = [n for n in model.ink_nodes if n.bbox]
+    if len(nodes) < 2:
+        return Selection(icon=[n.lpid for n in nodes], wordmark=[], source="auto")
+
+    bb = model.overall_bbox([n.lpid for n in nodes])
+    axis = 0 if (bb[2] - bb[0]) >= (bb[3] - bb[1]) else 1  # split along long axis
+
+    ordered = sorted(nodes, key=lambda n: n.centroid[axis])
+    gaps = [(ordered[i + 1].centroid[axis] - ordered[i].centroid[axis], i)
+            for i in range(len(ordered) - 1)]
+    _, idx = max(gaps)                       # largest gap -> the icon/word divide
+    group_a = ordered[:idx + 1]
+    group_b = ordered[idx + 1:]
+
+    def squareness(group: list) -> float:
+        b = model.overall_bbox([n.lpid for n in group])
+        w, h = b[2] - b[0], b[3] - b[1]
+        return min(w, h) / max(w, h, 1e-6)   # 1.0 == perfectly square
+
+    icon_group = group_a if squareness(group_a) >= squareness(group_b) else group_b
+    icon = [n.lpid for n in icon_group]
+    icon_set = set(icon)
+    wordmark = [n.lpid for n in model.ink_nodes if n.lpid not in icon_set]
+    return Selection(icon=icon, wordmark=wordmark, source="auto",
+                     overlap_warning=_overlap_warning(model, icon, wordmark))
+
+
 def resolve(model: WorkingSVG,
             box: tuple[float, float, float, float] | None) -> Selection:
-    """Prefer an explicit box; otherwise try named layers; else everything=icon
-    is wrong, so default to all-as-wordmark with empty icon only if nothing
-    else. In practice the API always supplies one of box/named-layers."""
+    """Prefer an explicit box; if it (or the absence of one) yields no icon,
+    fall back to named layers, then to auto_icon — so the icon set is never
+    empty (§3.4: selection is the fallback, not the only path)."""
     if box is not None:
-        return select_by_box(model, box)
+        sel = select_by_box(model, box)
+        if sel.icon:
+            return sel
+        # box captured no icon paths -> auto-extract instead of shipping blanks.
     named = detect_named_layers(model)
-    if named is not None:
+    if named is not None and named.icon:
         return named
-    # No box, no named layers: treat the whole artwork as a single (icon) group
-    # so generation still produces a logo set; caller is expected to provide a
-    # box for proper icon/wordmark separation.
-    all_ids = [n.lpid for n in model.ink_nodes]
-    return Selection(icon=all_ids, wordmark=[], source="box")
+    return auto_icon(model)
 
 
 # --- integrated-lockup heuristic (§9) ---------------------------------------

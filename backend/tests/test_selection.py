@@ -38,3 +38,36 @@ def test_box_and_named_layers_agree(solid_model):
     box = selection.select_by_box(solid_model, (10, 5, 150, 150))
     named = selection.detect_named_layers(solid_model)
     assert set(box.icon) == set(named.icon)
+
+
+def test_auto_icon_extracts_the_mark(solid_model):
+    """No box: spatial clustering picks the (square-ish) flame as the icon."""
+    auto = selection.auto_icon(solid_model)
+    assert auto.source == "auto"
+    assert len(auto.icon) == 1            # the flame
+    assert len(auto.wordmark) == 10       # the wordmark rects
+
+
+def test_resolve_falls_back_when_box_misses(solid_model):
+    """A box that captures no icon paths must NOT yield a blank icon — it falls
+    back (named layers here; auto extraction when there are none) (§3.4)."""
+    miss = selection.resolve(solid_model, (10000, 10000, 5, 5))  # off-artwork box
+    assert miss.icon                       # never empty
+    assert miss.source != "box"            # didn't ship the empty box result
+
+
+def test_resolve_auto_when_no_named_layers():
+    """With neither a usable box nor named layers, auto extraction kicks in."""
+    from app.svg_model import WorkingSVG
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 120">'
+           '<circle cx="60" cy="60" r="34" fill="#c8a04a"/>'         # icon (left)
+           '<rect x="150" y="50" width="40" height="20" fill="#111"/>'  # word (right)
+           '<rect x="200" y="50" width="40" height="20" fill="#111"/>'
+           '<rect x="250" y="50" width="40" height="20" fill="#111"/></svg>')
+    sel = selection.resolve(WorkingSVG.from_string(svg), (9999, 9999, 1, 1))
+    assert sel.source == "auto" and sel.icon
+
+
+def test_resolve_uses_valid_box(solid_model):
+    sel = selection.resolve(solid_model, (10, 5, 150, 150))
+    assert sel.source == "box" and len(sel.icon) == 1

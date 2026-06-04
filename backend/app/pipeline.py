@@ -100,10 +100,9 @@ def run_generate(req: GenerateRequest, workdir: Path) -> GenerateResult:
     if not report.supported:
         raise ManualFlag(report.reasons)  # §8 rule 6: no partial package
 
-    if req.selection_box is not None:
-        sel = selection.select_by_box(model, req.selection_box)
-    else:
-        sel = selection.resolve(model, None)  # named layers, else whole-as-mark
+    # Box first; if it misses (empty icon) fall back to named layers, then to
+    # automatic spatial extraction so the icon set is never blank.
+    sel = selection.resolve(model, req.selection_box)
 
     ctx = treatments.build_context(model, sel, report)
     builder = PackageBuilder(req.brand, workdir)
