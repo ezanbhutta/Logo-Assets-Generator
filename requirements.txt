@@ -1,0 +1,19 @@
+# Logo Package Engine — backend (Python 3.11+)
+# System packages required (see scripts/setup.sh):
+#   pdf2svg, librsvg2-bin (rsvg-convert), poppler-utils (pdftocairo),
+#   libcairo2 (for cairosvg).
+
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+
+# Vector toolchain
+cairosvg==2.7.1        # SVG -> PNG/JPG/PDF (gradients preserved)
+svgelements==1.9.6     # geometry: bbox / centroid with transforms resolved
+lxml==5.3.0            # raw SVG tree edits
+Pillow==11.1.0         # JPG flatten
+
+# Utilities / tests
+pypdf==5.1.0
+pytest==8.3.4
+httpx==0.28.1          # FastAPI TestClient

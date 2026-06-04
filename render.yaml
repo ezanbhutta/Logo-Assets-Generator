@@ -1,0 +1,16 @@
+# Render Blueprint — one-click deploy of the Logo Package Engine.
+# In Render: New > Blueprint > connect this repo. Render builds the Dockerfile
+# and runs one web service (UI + API on the same origin).
+services:
+  - type: web
+    name: logo-assets-generator
+    runtime: docker
+    plan: free                 # bump to 'starter' for always-on + more RAM
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: LOGO_WORK_ROOT
+        value: /tmp/logo_jobs
+      - key: LOGO_JOB_TTL
+        value: "3600"

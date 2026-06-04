@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 160" width="460" height="160">
+  <defs><style>.navy{fill:#112630}</style></defs>
+  <!-- ICON -->
+  <path class="navy" d="M80,18 C96,44 122,56 110,92 C104,118 78,132 58,112 Z"/>
+  <!-- OUT OF SCOPE: live (un-outlined) text — must flag manual (§9). -->
+  <text x="185" y="105" font-family="Arial" font-size="60" fill="#ec1c24">FIRE</text>
+</svg>
