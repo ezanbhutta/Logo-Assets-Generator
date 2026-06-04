@@ -14,7 +14,8 @@ from dataclasses import dataclass
 from lxml import etree
 
 from . import config
-from .config import CANVAS_W, CANVAS_H, SAFE_FRACTION, SVG_NS, XLINK_NS, LPID_ATTR
+from .config import (CANVAS_W, CANVAS_H, SAFE_FRACTION, ICON_FRACTION,
+                    SVG_NS, XLINK_NS, LPID_ATTR)
 from .colors import normalize_hex
 from .gradients import GradientSpec, parse_gradient, build_canvas_gradient
 from .recipes import Treatment
@@ -146,9 +147,10 @@ def _fmt(v: float) -> str:
 
 
 def _render_with_bg(ctx: TreatmentContext, vroot: etree._Element, art: BBox,
-                    treatment: Treatment) -> str:
+                    treatment: Treatment, mark: str) -> str:
     head, content = _split_head_content(vroot)
-    out = _new_svg(CANVAS_W, CANVAS_H, f"0 0 {CANVAS_W} {CANVAS_H}")
+    S = CANVAS_W  # square canvas
+    out = _new_svg(S, S, f"0 0 {S} {S}")
 
     defs = etree.SubElement(out, qn("defs"))
     for h in head:
@@ -163,21 +165,40 @@ def _render_with_bg(ctx: TreatmentContext, vroot: etree._Element, art: BBox,
 
     rect = etree.SubElement(out, qn("rect"))
     rect.set("x", "0"); rect.set("y", "0")
-    rect.set("width", str(CANVAS_W)); rect.set("height", str(CANVAS_H))
+    rect.set("width", str(S)); rect.set("height", str(S))
     rect.set("fill", bg_fill)
 
-    # Center + scale the artwork within the safe margins (§5.2/§7.6).
+    s = _placement_scale(ctx, art, mark, S)
     ax0, ay0, ax1, ay1 = art
-    aw, ah = max(ax1 - ax0, 1e-6), max(ay1 - ay0, 1e-6)
-    s = min(SAFE_FRACTION * CANVAS_W / aw, SAFE_FRACTION * CANVAS_H / ah)
     acx, acy = (ax0 + ax1) / 2.0, (ay0 + ay1) / 2.0
-    tx = CANVAS_W / 2.0 - s * acx
-    ty = CANVAS_H / 2.0 - s * acy
+    tx = S / 2.0 - s * acx
+    ty = S / 2.0 - s * acy
     g = etree.SubElement(out, qn("g"))
     g.set("transform", f"translate({tx:.4f},{ty:.4f}) scale({s:.6f})")
     for c in content:
         g.append(c)
     return etree.tostring(out, encoding="unicode")
+
+
+def _placement_scale(ctx: TreatmentContext, art: BBox, mark: str, S: int) -> float:
+    """Scale for centering the mark on the square canvas (matches the reference
+    packages):
+
+    * **logo** — keep the NATIVE composition size from the source artboard
+      (`S / vb_side`), capped at SAFE_FRACTION so tightly-cropped sources don't
+      bleed to the edges. Well-composed square artboards land at their designed
+      size (Fire ≈50%, MpCarney ≈64%).
+    * **icon** — the bare mark has an arbitrary native size, so normalize its
+      longest side to ICON_FRACTION of the canvas.
+    """
+    ax0, ay0, ax1, ay1 = art
+    maxside = max(ax1 - ax0, ay1 - ay0, 1e-6)
+    if mark == "icon":
+        return ICON_FRACTION * S / maxside
+    vb = ctx.model.viewbox
+    vb_side = max(vb[2] - vb[0], vb[3] - vb[1]) if vb else S
+    vb_side = max(vb_side, 1e-6)
+    return min(S / vb_side, SAFE_FRACTION * S / maxside)
 
 
 def _render_transparent(ctx: TreatmentContext, vroot: etree._Element, art: BBox) -> str:
@@ -205,5 +226,5 @@ def render_variant(ctx: TreatmentContext, mark: str, treatment: Treatment,
     if art is None:
         art = ctx.model.viewbox or (0.0, 0.0, float(CANVAS_W), float(CANVAS_H))
     if with_background:
-        return _render_with_bg(ctx, vroot, art, treatment)
+        return _render_with_bg(ctx, vroot, art, treatment, mark)
     return _render_transparent(ctx, vroot, art)

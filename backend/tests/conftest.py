@@ -39,12 +39,14 @@ def gradient_model(gradient_svg):
     return WorkingSVG.from_string(gradient_svg)
 
 
-def render(svg_text: str, w: int = 1920, h: int = 1080):
-    """Rasterize an SVG string to a PIL RGB(A) image for pixel assertions."""
+def render(svg_text: str, w: int | None = None, h: int | None = None):
+    """Rasterize an SVG string to a PIL RGB(A) image for pixel assertions.
+    Defaults to the square with-bg canvas."""
     import cairosvg
     from PIL import Image
+    from app.config import CANVAS_W, CANVAS_H
     png = cairosvg.svg2png(bytestring=svg_text.encode("utf-8"),
-                           output_width=w, output_height=h)
+                           output_width=w or CANVAS_W, output_height=h or CANVAS_H)
     return Image.open(io.BytesIO(png))
 
 

@@ -1,11 +1,19 @@
 """Engine-wide constants. The fixture (§10) and locked spec (§5.2) drive these."""
 import os
 
-# --- Canvas (§5.2) -----------------------------------------------------------
-CANVAS_W = 1920
+# --- Canvas -----------------------------------------------------------------
+# SQUARE artboards, matching the ground-truth reference packages (Fire Systems
+# 1080², MpCarney 1200²) — exported at @EXPORT_SCALE (default @2x → 2160²).
+CANVAS_W = 1080
 CANVAS_H = 1080
-# Logo's longest side <= ~65% of the corresponding canvas dimension (§5.2/§7.6).
-SAFE_FRACTION = 0.65
+# Logo cap: the lockup keeps its NATIVE composition size from the source
+# artboard (designers compose with margins), but never exceeds this fraction of
+# the canvas — protects tightly-cropped sources from touching the edges.
+SAFE_FRACTION = 0.66
+# Icon variants are re-centered and normalized to this fraction of the canvas
+# (the bare mark from a lockup has an arbitrary native size). Matches the
+# reference icon sizing (~0.29–0.31 longest side).
+ICON_FRACTION = 0.30
 
 # --- Transparent raster (§5.2) ----------------------------------------------
 PNG_WIDTH = 1080  # transparent PNGs: 1080px wide (logical), height proportional.

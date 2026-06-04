@@ -2,9 +2,12 @@
 import pytest
 
 from app import colors, selection, treatments
+from app.config import CANVAS_W, CANVAS_H
 from app.recipes import (SOLID_LOGO, SOLID_ICON, GRADIENT_LOGO,
                          TRANSPARENT_LOGO, with_bg_recipes)
 from conftest import render, near, ICON_BOX
+
+MID = CANVAS_H // 2
 
 
 def _ctx(model):
@@ -31,8 +34,8 @@ def test_split_keeps_icon_color_whitens_wordmark(solid_model):
     ctx, _ = _ctx(solid_model)
     img = render(treatments.render_variant(ctx, "logo", SOLID_LOGO[1], True)).convert("RGB")
     reds = whites = 0
-    for x in range(0, 1920, 4):
-        p = img.getpixel((x, 540))
+    for x in range(0, CANVAS_W, 4):
+        p = img.getpixel((x, MID))
         reds += near(p, (236, 28, 36))
         whites += near(p, (255, 255, 255))
     assert reds > 0 and whites > 0
@@ -42,7 +45,7 @@ def test_all_white_knockout(solid_model):
     """Logo 05: every fill -> white on black (§6.2/05)."""
     ctx, _ = _ctx(solid_model)
     img = render(treatments.render_variant(ctx, "logo", SOLID_LOGO[4], True)).convert("RGB")
-    whites = sum(near(img.getpixel((x, 540)), (255, 255, 255)) for x in range(0, 1920, 4))
+    whites = sum(near(img.getpixel((x, MID)), (255, 255, 255)) for x in range(0, CANVAS_W, 4))
     assert whites > 0
 
 
@@ -50,7 +53,7 @@ def test_all_black_mono(solid_model):
     """Logo 04: every fill -> black on white (§6.2/04)."""
     ctx, _ = _ctx(solid_model)
     img = render(treatments.render_variant(ctx, "logo", SOLID_LOGO[3], True)).convert("RGB")
-    blacks = sum(near(img.getpixel((x, 540)), (0, 0, 0)) for x in range(0, 1920, 4))
+    blacks = sum(near(img.getpixel((x, MID)), (0, 0, 0)) for x in range(0, CANVAS_W, 4))
     assert blacks > 0
 
 
@@ -78,10 +81,10 @@ def test_gradient_hero_white_knockout_on_rebuilt_gradient(gradient_model):
     svg = treatments.render_variant(ctx, "logo", GRADIENT_LOGO[1], True)
     assert "objectBoundingBox" in svg and 'url(#bgGradient)' in svg
     img = render(svg).convert("RGB")
-    tl, br = img.getpixel((10, 10)), img.getpixel((1910, 1070))
+    tl, br = img.getpixel((10, 10)), img.getpixel((CANVAS_W - 10, CANVAS_H - 10))
     assert not near(tl, br, tol=20)            # gradient spans the canvas
     # white knockout present in the artwork band
-    whites = sum(near(img.getpixel((x, 540)), (255, 255, 255)) for x in range(0, 1920, 4))
+    whites = sum(near(img.getpixel((x, MID)), (255, 255, 255)) for x in range(0, CANVAS_W, 4))
     assert whites > 0
 
 
@@ -98,7 +101,7 @@ def test_transparent_has_tight_viewbox_no_bg(solid_model):
     """§5.2: transparent variants crop to the artwork, no canvas rect."""
     ctx, _ = _ctx(solid_model)
     svg = treatments.render_variant(ctx, "icon", TRANSPARENT_LOGO[0], False)
-    assert 'width="1920"' not in svg
+    assert f'viewBox="0 0 {CANVAS_W} {CANVAS_H}"' not in svg   # tight bbox, not canvas
     img = render(svg, w=300, h=300)  # has alpha, corners transparent
     assert img.convert("RGBA").getpixel((1, 1))[3] == 0
 
@@ -107,7 +110,7 @@ def test_placement_within_safe_margins(solid_model):
     """Artwork longest side <= ~65% of the canvas (§5.2)."""
     ctx, _ = _ctx(solid_model)
     img = render(treatments.render_variant(ctx, "logo", SOLID_LOGO[0], True)).convert("RGB")
-    xs = [x for x in range(1920) if not near(img.getpixel((x, 540)), (255, 255, 255))]
+    xs = [x for x in range(CANVAS_W) if not near(img.getpixel((x, MID)), (255, 255, 255))]
     assert xs, "expected ink on the mid line"
-    width_frac = (max(xs) - min(xs)) / 1920
+    width_frac = (max(xs) - min(xs)) / CANVAS_W
     assert width_frac <= 0.66

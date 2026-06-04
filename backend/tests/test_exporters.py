@@ -14,8 +14,9 @@ def _ctx(model):
     return treatments.build_context(model, sel, colors.detect(model))
 
 
-def test_jpg_is_16x9_at_export_scale_rgb(solid_model, tmp_path):
-    """With-bg JPG is 1920×1080 logical, rasterized at @EXPORT_SCALE (default @2x)."""
+def test_jpg_is_square_at_export_scale_rgb(solid_model, tmp_path):
+    """With-bg JPG is the square logical canvas, rasterized at @EXPORT_SCALE
+    (default @2x → 2160×2160), matching the reference packages."""
     ctx = _ctx(solid_model)
     svg = treatments.render_variant(ctx, "logo", SOLID_LOGO[0], True)
     out = tmp_path / "logo.jpg"

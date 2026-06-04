@@ -106,7 +106,15 @@ Any Docker host works the same way — Railway, Fly.io, Cloud Run, a VPS.
 
 51 generated files + the two pass-through originals.
 
-**Raster quality:** JPG/PNG are exported at **@2×** density (JPG 3840×2160, PNG
+**Canvas — square, matching the reference packages.** The ground-truth
+deliverables (Fire Systems 1080², MpCarney 1200²) use **square** with-background
+artboards with the lockup at its **native composition size, centered**, and the
+icon **re-centered and normalized to ~30%** of the canvas. The engine matches
+this: a 1080² logical canvas (override `BUILD_SPEC.md`'s placeholder 1920×1080),
+logo placed at its source-artboard size (capped at 66% for tightly-cropped
+sources), icon at 30%. Verified ~pixel-identical to the Fire Systems reference.
+
+**Raster quality:** JPG/PNG are exported at **@2×** density (JPG 2160×2160, PNG
 2160px wide) at JPEG quality 95; SVG/PDF stay vector. Tune with
 `LOGO_EXPORT_SCALE` (default `2`) and `LOGO_JPG_QUALITY` (default `95`).
 
