@@ -98,32 +98,40 @@ def _leaf_ids(group: etree._Element) -> list[str]:
     return [el.get(LPID_ATTR) for el in iter_leaves(group) if el.get(LPID_ATTR)]
 
 
+def _squareness(model: WorkingSVG, group: list) -> float:
+    b = model.overall_bbox([n.lpid for n in group])
+    if not b:
+        return 0.0
+    w, h = b[2] - b[0], b[3] - b[1]
+    return min(w, h) / max(w, h, 1e-6)       # 1.0 == perfectly square
+
+
 def auto_icon(model: WorkingSVG) -> Selection:
-    """Guess the icon vs wordmark with no box: split the lockup at its largest
-    gap (along whichever axis the artwork is more elongated), then call the
-    more square-shaped cluster the icon (wordmarks are wide-and-short). Ensures
-    the icon set is never empty when a hand-drawn box misses."""
+    """Guess the icon vs wordmark with no box. Try splitting the lockup at its
+    largest gap on BOTH axes (vertical for a stacked lockup, horizontal for a
+    side-by-side one) and keep the split that yields the most icon-like mark:
+    a compact/square cluster paired with a wide-and-short wordmark. Robust to
+    the long axis being the *wordmark's* (e.g. a wide text row under a square
+    emblem). The icon set is never empty.
+    """
     nodes = [n for n in model.ink_nodes if n.bbox]
     if len(nodes) < 2:
         return Selection(icon=[n.lpid for n in nodes], wordmark=[], source="auto")
 
-    bb = model.overall_bbox([n.lpid for n in nodes])
-    axis = 0 if (bb[2] - bb[0]) >= (bb[3] - bb[1]) else 1  # split along long axis
+    best = None  # (score, icon_group)
+    for axis in (0, 1):
+        ordered = sorted(nodes, key=lambda n: n.centroid[axis])
+        gi = max(range(len(ordered) - 1),
+                 key=lambda i: ordered[i + 1].centroid[axis] - ordered[i].centroid[axis])
+        a, b = ordered[:gi + 1], ordered[gi + 1:]
+        icon_group = a if _squareness(model, a) >= _squareness(model, b) else b
+        word_group = b if icon_group is a else a
+        # reward a square icon next to a wide wordmark.
+        score = _squareness(model, icon_group) - _squareness(model, word_group)
+        if best is None or score > best[0]:
+            best = (score, icon_group)
 
-    ordered = sorted(nodes, key=lambda n: n.centroid[axis])
-    gaps = [(ordered[i + 1].centroid[axis] - ordered[i].centroid[axis], i)
-            for i in range(len(ordered) - 1)]
-    _, idx = max(gaps)                       # largest gap -> the icon/word divide
-    group_a = ordered[:idx + 1]
-    group_b = ordered[idx + 1:]
-
-    def squareness(group: list) -> float:
-        b = model.overall_bbox([n.lpid for n in group])
-        w, h = b[2] - b[0], b[3] - b[1]
-        return min(w, h) / max(w, h, 1e-6)   # 1.0 == perfectly square
-
-    icon_group = group_a if squareness(group_a) >= squareness(group_b) else group_b
-    icon = [n.lpid for n in icon_group]
+    icon = [n.lpid for n in best[1]]
     icon_set = set(icon)
     wordmark = [n.lpid for n in model.ink_nodes if n.lpid not in icon_set]
     return Selection(icon=icon, wordmark=wordmark, source="auto",

@@ -48,6 +48,23 @@ def test_auto_icon_extracts_the_mark(solid_model):
     assert len(auto.wordmark) == 10       # the wordmark rects
 
 
+def test_auto_icon_stacked_lockup_picks_top_emblem():
+    """Stacked lockup (square emblem ON TOP of a WIDE text row): the overall
+    artwork is wider than tall, so a naive long-axis split fails — the emblem
+    must still win (the Ironclad case)."""
+    from app.svg_model import WorkingSVG
+    parts = ['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 300">']
+    parts.append('<circle cx="300" cy="80" r="44" fill="#333"/>')        # emblem (top)
+    for i, x in enumerate(range(60, 541, 60)):                            # wide text row
+        parts.append(f'<rect x="{x}" y="232" width="34" height="34" fill="#333"/>')
+    parts.append('</svg>')
+    m = WorkingSVG.from_string("".join(parts))
+    auto = selection.auto_icon(m)
+    ib = m.overall_bbox(auto.icon)
+    assert len(auto.icon) == 1            # just the emblem
+    assert ib[3] < 150                    # icon lives in the TOP half, not the text row
+
+
 def test_resolve_falls_back_when_box_misses(solid_model):
     """A box that captures no icon paths must NOT yield a blank icon — it falls
     back (named layers here; auto extraction when there are none) (§3.4)."""
