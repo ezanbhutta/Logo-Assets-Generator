@@ -30,7 +30,7 @@ export default function Uploader({ onIngest, busy }) {
       <button
         disabled={!ai || busy}
         onClick={() => onIngest({ ai, eps, brand })}
-        className="w-full rounded-md bg-brand-navy py-2.5 font-medium text-white disabled:opacity-40"
+        className="w-full rounded-md bg-pulse-500 py-2.5 font-medium text-white disabled:opacity-40"
       >
         {busy ? "Converting…" : "Upload & preview"}
       </button>
@@ -53,9 +53,9 @@ function Field({ label, children }) {
 
 function FileDrop({ label, accept, file, onFile, required }) {
   return (
-    <label className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-slate-300 bg-white px-4 py-6 text-center hover:border-brand-navy">
+    <label className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-slate-300 bg-white px-4 py-6 text-center hover:border-pulse-500">
       <span className="text-sm font-medium text-slate-600">
-        {label} {required && <span className="text-brand-red">*</span>}
+        {label} {required && <span className="text-pulse-500">*</span>}
       </span>
       <span className="text-xs text-slate-400">{file ? file.name : "Click to choose"}</span>
       <input

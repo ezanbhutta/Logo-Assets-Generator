@@ -4,7 +4,7 @@ export default function ArtboardChooser({ artboards, primaryIndex, onPick }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
       <div className="mb-1 flex items-center gap-2">
-        <span className="grid h-6 w-6 place-items-center rounded-full bg-brand-navy text-xs font-bold text-white">
+        <span className="grid h-6 w-6 place-items-center rounded-full bg-pulse-500 text-xs font-bold text-white">
           ?
         </span>
         <h2 className="text-base font-semibold text-slate-700">
@@ -28,7 +28,7 @@ export default function ArtboardChooser({ artboards, primaryIndex, onPick }) {
               key={b.index}
               onClick={() => onPick(b.index)}
               className={`group rounded-lg border-2 p-2 text-left transition ${
-                suggested ? "border-brand-navy" : "border-slate-200 hover:border-slate-400"
+                suggested ? "border-pulse-500" : "border-slate-200 hover:border-slate-400"
               }`}
             >
               <div
@@ -40,7 +40,7 @@ export default function ArtboardChooser({ artboards, primaryIndex, onPick }) {
                 <span className="text-sm font-medium text-slate-700">{b.label}</span>
                 <div className="flex gap-1">
                   {suggested && (
-                    <span className="rounded bg-brand-navy px-1.5 py-0.5 text-[10px] text-white">
+                    <span className="rounded bg-pulse-500 px-1.5 py-0.5 text-[10px] text-white">
                       suggested
                     </span>
                   )}

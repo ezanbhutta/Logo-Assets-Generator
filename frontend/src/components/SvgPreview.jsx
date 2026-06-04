@@ -74,7 +74,7 @@ export default function SvgPreview({ workingSvg, viewbox, box, onBox, enabled })
       >
         {drag && (
           <div
-            className="absolute border-2 border-brand-red bg-brand-red/10"
+            className="absolute border-2 border-pulse-500 bg-pulse-500/10"
             style={{ left: drag.l, top: drag.t, width: drag.w, height: drag.h }}
           />
         )}

@@ -9,11 +9,11 @@ body,
 }
 
 body {
-  @apply text-slate-800 antialiased;
+  @apply font-sans text-ink antialiased;
   background:
-    radial-gradient(60rem 60rem at 110% -10%, rgba(17, 38, 48, 0.05), transparent 60%),
-    radial-gradient(50rem 50rem at -10% 110%, rgba(236, 28, 36, 0.04), transparent 55%),
-    #f6f8fa;
+    radial-gradient(55rem 55rem at 100% -10%, rgba(114, 41, 255, 0.10), transparent 60%),
+    radial-gradient(50rem 50rem at -10% 110%, rgba(114, 41, 255, 0.08), transparent 55%),
+    #f4f2fa;
 }
 
 /* The injected working SVG fills its host exactly so the screen->user-space

@@ -136,7 +136,7 @@ export default function App() {
             {result.artboard_count > 1 && (
               <button
                 onClick={() => setChosen(null)}
-                className="mb-2 text-xs text-brand-navy underline"
+                className="mb-2 text-xs text-pulse-600 underline"
               >
                 ← {active.label} · change artboard
               </button>
@@ -194,7 +194,7 @@ export default function App() {
               <button
                 disabled={busy}
                 onClick={handleGenerate}
-                className="w-full rounded-md bg-brand-red py-2.5 font-medium text-white disabled:opacity-40"
+                className="w-full rounded-md bg-pulse-500 py-2.5 font-medium text-white disabled:opacity-40"
               >
                 {busy
                   ? "Building package…"
@@ -214,7 +214,7 @@ export default function App() {
                   </p>
                   <button
                     onClick={reset}
-                    className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-brand-navy px-3.5 py-2 text-sm font-medium text-white hover:bg-[#1c3d4f]"
+                    className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-pulse-500 px-3.5 py-2 text-sm font-medium text-white hover:bg-pulse-600"
                   >
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
                       <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
@@ -242,14 +242,14 @@ function SelectionModeToggle({ hasNamed, mode, setMode }) {
       {hasNamed && (
         <button
           onClick={() => setMode("named")}
-          className={`rounded px-3 py-1 ${mode === "named" ? "bg-brand-navy text-white" : "text-slate-600"}`}
+          className={`rounded px-3 py-1 ${mode === "named" ? "bg-pulse-500 text-white" : "text-slate-600"}`}
         >
           Detected Icon layer
         </button>
       )}
       <button
         onClick={() => setMode("box")}
-        className={`rounded px-3 py-1 ${mode === "box" ? "bg-brand-navy text-white" : "text-slate-600"}`}
+        className={`rounded px-3 py-1 ${mode === "box" ? "bg-pulse-500 text-white" : "text-slate-600"}`}
       >
         Draw a box
       </button>
@@ -261,7 +261,7 @@ function ManualFlag({ reasons, onReset }) {
   return (
     <Card>
       <div className="space-y-3">
-        <h2 className="text-lg font-semibold text-brand-red">Route to manual</h2>
+        <h2 className="text-lg font-semibold text-pulse-500">Route to manual</h2>
         <p className="text-sm text-slate-600">
           This logo can't be auto-packaged because it contains:
         </p>
@@ -273,7 +273,7 @@ function ManualFlag({ reasons, onReset }) {
         <p className="text-xs text-slate-500">
           No partial package is produced — these inputs need a designer (§9).
         </p>
-        <button onClick={onReset} className="rounded-md bg-brand-navy px-4 py-2 text-sm text-white">
+        <button onClick={onReset} className="rounded-md bg-pulse-500 px-4 py-2 text-sm text-white">
           Start over
         </button>
       </div>
@@ -289,7 +289,7 @@ const Card = ({ children }) => (
 
 const StepHeader = ({ n, title }) => (
   <div className="mb-3 flex items-center gap-2">
-    <span className="grid h-6 w-6 place-items-center rounded-full bg-brand-navy text-xs font-bold text-white">
+    <span className="grid h-6 w-6 place-items-center rounded-full bg-pulse-500 text-xs font-bold text-white">
       {n}
     </span>
     <h2 className="text-base font-semibold text-slate-700">{title}</h2>

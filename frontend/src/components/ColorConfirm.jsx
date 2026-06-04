@@ -37,7 +37,7 @@ export default function ColorConfirm({ result, removed, onToggle }) {
             key={g.value}
             className="flex items-center gap-2 rounded-md border border-slate-300 px-2.5 py-1.5 text-xs"
           >
-            <span className="h-5 w-5 rounded border border-slate-300 bg-gradient-to-br from-amber-400 via-orange-500 to-brand-red" />
+            <span className="h-5 w-5 rounded border border-slate-300 bg-gradient-to-br from-pulse-400 via-fuchsia-500 to-pink-500" />
             gradient
           </span>
         ))}

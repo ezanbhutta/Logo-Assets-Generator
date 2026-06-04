@@ -14,7 +14,7 @@ export default function TopBar({ onNew, showNew }) {
         {showNew && (
           <button
             onClick={onNew}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-brand-navy px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-[#1c3d4f]"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-pulse-500 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-pulse-600"
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
               <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />

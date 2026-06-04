@@ -14,7 +14,7 @@ export default function Steps({ current }) {
                 state === "done"
                   ? "bg-emerald-500 text-white"
                   : state === "active"
-                  ? "bg-brand-navy text-white ring-4 ring-brand-navy/10"
+                  ? "bg-pulse-500 text-white ring-4 ring-pulse-500/15"
                   : "bg-slate-200 text-slate-500"
               }`}
             >
