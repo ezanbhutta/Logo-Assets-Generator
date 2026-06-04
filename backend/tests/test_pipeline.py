@@ -7,6 +7,11 @@ import pytest
 from app.pipeline import (run_ingest, run_generate, GenerateRequest, ManualFlag)
 
 
+def _primary(summ):
+    """The suggested primary artboard's summary."""
+    return summ.artboards[summ.primary_index]
+
+
 # Expected §5.1 tree (relative to the root folder), brand "Acme".
 EXPECTED = {
     "JPG": [f"{s} {i:02d}.jpg" for s in ("Icon", "Logo") for i in range(1, 6)],
@@ -25,7 +30,7 @@ def _generate(svg_bytes, tmp_path, brand="Acme", ai=None, eps=None):
     src = tmp_path / "in.svg"
     src.write_bytes(svg_bytes)
     summ = run_ingest(src, tmp_path)
-    req = GenerateRequest(brand=brand, working_svg=summ.working_svg,
+    req = GenerateRequest(brand=brand, working_svg=_primary(summ).working_svg,
                           selection_box=(10, 5, 150, 150), ai_path=ai, eps_path=eps)
     return run_generate(req, tmp_path)
 
@@ -78,7 +83,7 @@ def test_no_box_generates_logo_only(tmp_path):
            '<rect x="250" y="55" width="14" height="60" fill="#112630"/></svg>')
     src = tmp_path / "in.svg"; src.write_bytes(svg.encode())
     summ = run_ingest(src, tmp_path)
-    res = run_generate(GenerateRequest(brand="Acme", working_svg=summ.working_svg,
+    res = run_generate(GenerateRequest(brand="Acme", working_svg=_primary(summ).working_svg,
                                        selection_box=None), tmp_path)
     assert res.include_icon is False
     assert not any("/Icon " in m for m in res.manifest)        # no icon files
@@ -95,9 +100,9 @@ def test_box_generates_both_sets(solid_svg, tmp_path):
 def test_manual_flag_refuses_no_partial_zip(oos_svg, tmp_path):
     src = tmp_path / "oos.svg"; src.write_bytes(oos_svg)
     summ = run_ingest(src, tmp_path)
-    assert summ.classification == "manual"
+    assert _primary(summ).classification == "manual"
     with pytest.raises(ManualFlag):
-        run_generate(GenerateRequest(brand="Acme", working_svg=summ.working_svg,
+        run_generate(GenerateRequest(brand="Acme", working_svg=_primary(summ).working_svg,
                                      selection_box=(10, 5, 150, 150)), tmp_path)
     assert not list(tmp_path.glob("Acme Files*"))   # no partial package
 
@@ -111,6 +116,49 @@ def test_gradient_package_keeps_vector_and_gradient(gradient_svg, tmp_path):
     assert "<path" in hero and "linearGradient" in hero and "objectBoundingBox" in hero
     full = (root / "SVG" / "Logo 01.svg").read_text()
     assert "url(#flameGrad)" in full
+
+
+def _two_artboard_ai(tmp_path):
+    """Build a 2-page PDF (== 2-artboard .ai) from two distinct marks."""
+    import subprocess
+    from pypdf import PdfReader, PdfWriter
+    a = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300">'
+         '<circle cx="150" cy="150" r="80" fill="#ec1c24"/></svg>')
+    b = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300">'
+         '<rect x="40" y="120" width="220" height="60" fill="#112630"/>'
+         '<circle cx="80" cy="150" r="40" fill="#ec1c24"/></svg>')
+    pdfs = []
+    for i, svg in enumerate((a, b)):
+        p = tmp_path / f"p{i}.pdf"
+        subprocess.run(["rsvg-convert", "-f", "pdf", "-o", str(p)],
+                       input=svg.encode(), check=True)
+        pdfs.append(p)
+    writer = PdfWriter()
+    for p in pdfs:
+        for page in PdfReader(str(p)).pages:
+            writer.add_page(page)
+    out = tmp_path / "multi.ai"
+    with open(out, "wb") as f:
+        writer.write(f)
+    return out
+
+
+def test_multiple_artboards_detected(tmp_path):
+    """A multi-artboard .ai exposes every artboard so the CSR can pick the
+    primary logo (not just page 1)."""
+    summ = run_ingest(_two_artboard_ai(tmp_path), tmp_path)
+    assert summ.artboard_count == 2
+    assert all(b.ink_count >= 1 for b in summ.artboards)
+    assert 0 <= summ.primary_index < 2
+
+
+def test_generate_uses_chosen_artboard(tmp_path):
+    summ = run_ingest(_two_artboard_ai(tmp_path), tmp_path)
+    # generate from the SECOND artboard explicitly
+    res = run_generate(GenerateRequest(brand="Multi",
+                                       working_svg=summ.artboards[1].working_svg,
+                                       selection_box=None), tmp_path)
+    assert any("/Logo 01.jpg" in m for m in res.manifest)
 
 
 def test_pdf_compatible_required(tmp_path):

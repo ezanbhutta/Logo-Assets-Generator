@@ -82,7 +82,11 @@ Any Docker host works the same way — Railway, Fly.io, Cloud Run, a VPS.
 ## The CSR flow (§3)
 
 1. **Brand name** — defaults to the `.ai` filename.
-2. **Upload** `.ai` + `.eps`. Backend converts `.ai`→SVG and returns it.
+2. **Upload** `.ai` + `.eps`. Backend converts every artboard → SVG and returns
+   them. **If the `.ai` has multiple artboards, the CSR must pick the primary
+   logo** before anything is generated (duplicate treatment-variants of one mark
+   are collapsed; the most complete full-color lockup is suggested). A
+   single-artboard file proceeds straight through.
 3. **Mark the icon (optional)** — drag one box on the live vector preview (or
    confirm a detected named layer). Icon = paths whose centroid is inside the
    box; **wordmark = every other path** (no second drag). **Skip it** and the

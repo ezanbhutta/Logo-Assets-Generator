@@ -10,10 +10,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import colors, selection, treatments
+from . import colors, ingest, selection, treatments
 from .config import (ICON_STEM, LOGO_STEM, variant_filename)
 from .exporters import (write_svg, write_jpg, write_pdf, write_png_transparent)
-from .ingest import ingest
+from .ingest import IngestError
 from .packager import PackageBuilder
 from .recipes import with_bg_recipes, transparent_recipes
 from .svg_model import WorkingSVG
@@ -28,40 +28,103 @@ class ManualFlag(Exception):
 
 # --- ingest ------------------------------------------------------------------
 @dataclass
-class IngestSummary:
-    working_svg: str
-    converter: str
+class ArtboardSummary:
+    index: int
+    label: str
+    working_svg: str                      # lpid-tagged; the frontend renders this
     viewbox: list[float]
     classification: str
+    supported: bool
     reasons: list[str]
     swatches: list[dict]
     brand_a: str
     brand_b: str
     is_gradient: bool
+    ink_count: int
     named_selection: dict | None
+    geom_sig: tuple = ()                   # geometry-only signature (de-dup key)
+
+    @property
+    def brand_count(self) -> int:
+        return sum(1 for s in self.swatches if s.get("brand"))
+
+
+@dataclass
+class IngestSummary:
+    converter: str
+    artboards: list[ArtboardSummary]
+    primary_index: int                    # engine's suggested primary logo
+
+    @property
+    def artboard_count(self) -> int:
+        return len(self.artboards)
 
 
 def run_ingest(source: Path, workdir: Path) -> IngestSummary:
-    res = ingest(source, workdir)
-    model = WorkingSVG.from_string(res.svg_text)
-    report = colors.detect(model)
-    named = selection.detect_named_layers(model)
-    vb = model.viewbox or (0.0, 0.0, 0.0, 0.0)
-    return IngestSummary(
-        working_svg=model.serialize(),        # lpid-tagged; frontend renders this
-        converter=res.converter,
-        viewbox=[round(v, 3) for v in vb],
-        classification=report.classification,
-        reasons=report.reasons,
-        swatches=report.swatches,
-        brand_a=report.brand_a,
-        brand_b=report.brand_b,
-        is_gradient=report.is_gradient,
-        named_selection=(
-            {"icon": named.icon, "source": named.source,
-             "overlap_warning": named.overlap_warning}
-            if named else None),
-    )
+    """Convert every artboard/page. The working SVG for artboard *i* is persisted
+    as ``working_{i}.svg`` so /generate can use the CSR's chosen one (§ multi-
+    artboard: always let the CSR pick the primary logo)."""
+    n = ingest.page_count(source)
+    converter = "pdf2svg"
+    boards: list[ArtboardSummary] = []
+    for i in range(n):
+        try:
+            res = ingest.ingest(source, workdir, page=i + 1, out_name=f"working_{i}.svg")
+        except IngestError:
+            continue
+        converter = res.converter
+        model = WorkingSVG.from_string(res.svg_text)
+        # persist the lpid-tagged working SVG for /generate to read
+        (workdir / f"working_{i}.svg").write_text(model.serialize(), encoding="utf-8")
+        report = colors.detect(model)
+        named = selection.detect_named_layers(model)
+        vb = model.viewbox or (0.0, 0.0, 0.0, 0.0)
+        geom_sig = tuple(sorted(
+            tuple(round(c) for c in n.bbox) for n in model.ink_nodes if n.bbox))
+        boards.append(ArtboardSummary(
+            index=i,
+            label=f"Artboard {i + 1}",
+            working_svg=model.serialize(),
+            viewbox=[round(v, 3) for v in vb],
+            classification=report.classification,
+            supported=report.classification in ("solid", "gradient"),
+            reasons=report.reasons,
+            swatches=report.swatches,
+            brand_a=report.brand_a,
+            brand_b=report.brand_b,
+            is_gradient=report.is_gradient,
+            ink_count=len(model.ink_nodes),
+            named_selection=(
+                {"icon": named.icon, "source": named.source,
+                 "overlap_warning": named.overlap_warning} if named else None),
+            geom_sig=geom_sig,
+        ))
+
+    if not boards:
+        raise IngestError("Could not convert any artboard of the .ai/PDF.")
+    boards = _dedupe(boards)
+    return IngestSummary(converter=converter, artboards=boards,
+                         primary_index=_suggest_primary(boards))
+
+
+def _dedupe(boards: list[ArtboardSummary]) -> list[ArtboardSummary]:
+    """Collapse artboards that are the same shape in different treatments (a
+    designer file often lays out white/black/color variants of one mark across
+    artboards). Keep the most full-color (most brand colors) representative of
+    each geometry, so the CSR picks from distinct logos, not duplicates."""
+    groups: dict[tuple, list[ArtboardSummary]] = {}
+    for b in boards:
+        groups.setdefault(b.geom_sig, []).append(b)
+    reps = [max(g, key=lambda b: (b.brand_count, -b.index)) for g in groups.values()]
+    reps.sort(key=lambda b: b.index)
+    return reps
+
+
+def _suggest_primary(boards: list[ArtboardSummary]) -> int:
+    """Suggest the primary lockup: the most complete (most ink) supported board,
+    tie-broken toward the most full-color (most brand colors)."""
+    supported = [b for b in boards if b.supported] or boards
+    return max(supported, key=lambda b: (b.ink_count, b.brand_count)).index
 
 
 # --- generate ----------------------------------------------------------------

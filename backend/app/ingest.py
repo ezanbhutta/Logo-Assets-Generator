@@ -34,8 +34,23 @@ def _is_svg(data: bytes) -> bool:
     return head[:5].lower() == b"<?xml" or b"<svg" in data[:512].lower()
 
 
-def ingest(source: Path, workdir: Path) -> IngestResult:
-    """Convert `source` (.ai/.pdf/.svg) to working SVG text."""
+def page_count(source: Path) -> int:
+    """Number of pages/artboards. A PDF-compatible `.ai` stores each artboard as
+    a PDF page, so page count == artboard count."""
+    data = source.read_bytes()
+    if _is_svg(data) or not _is_pdf(data):
+        return 1
+    try:
+        from pypdf import PdfReader
+        n = len(PdfReader(str(source)).pages)
+        return n if n > 0 else 1
+    except Exception:
+        return 1
+
+
+def ingest(source: Path, workdir: Path, page: int = 1,
+           out_name: str = "working.svg") -> IngestResult:
+    """Convert one page/artboard of `source` (.ai/.pdf/.svg) to working SVG."""
     data = source.read_bytes()
 
     if _is_svg(data):
@@ -47,12 +62,13 @@ def ingest(source: Path, workdir: Path) -> IngestResult:
             "The .ai is not PDF-compatible. Re-save from Illustrator with "
             "'Create PDF Compatible File' enabled (§4).")
 
-    out = workdir / "working.svg"
+    out = workdir / out_name
+    p = str(page)
 
     # Primary: pdf2svg (poppler/cairo) — strong on real gradient defs (§2/M1).
     if _PDF2SVG:
         try:
-            subprocess.run([_PDF2SVG, str(source), str(out), "1"],
+            subprocess.run([_PDF2SVG, str(source), str(out), p],
                            check=True, stdout=subprocess.DEVNULL,
                            stderr=subprocess.PIPE)
             if out.exists() and out.stat().st_size > 0:
@@ -64,7 +80,7 @@ def ingest(source: Path, workdir: Path) -> IngestResult:
     # Fallback: pdftocairo -svg (also poppler-backed).
     if _PDFTOCAIRO:
         try:
-            subprocess.run([_PDFTOCAIRO, "-svg", "-f", "1", "-l", "1",
+            subprocess.run([_PDFTOCAIRO, "-svg", "-f", p, "-l", p,
                             str(source), str(out)],
                            check=True, stdout=subprocess.DEVNULL,
                            stderr=subprocess.PIPE)

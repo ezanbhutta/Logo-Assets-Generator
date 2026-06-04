@@ -15,7 +15,8 @@ from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
 from .ingest import IngestError
-from .models import GenerateRequestBody, HealthResponse, IngestResponse
+from .models import (ArtboardInfo, GenerateRequestBody, HealthResponse,
+                     IngestResponse)
 from .pipeline import (GenerateRequest, ManualFlag, run_generate, run_ingest)
 
 WORK_ROOT = Path(os.environ.get("LOGO_WORK_ROOT", "/tmp/logo_jobs"))
@@ -89,30 +90,28 @@ async def ingest_endpoint(
         shutil.rmtree(job, ignore_errors=True)
         raise HTTPException(status_code=422, detail=str(e))
 
-    (job / "working.svg").write_text(summary.working_svg, encoding="utf-8")
     (job / "brand.txt").write_text(brand, encoding="utf-8")
 
     return IngestResponse(
         job_id=job_id,
         brand=brand,
         converter=summary.converter,
-        working_svg=summary.working_svg,
-        viewbox=summary.viewbox,
-        classification=summary.classification,
-        reasons=summary.reasons,
-        supported=summary.classification in ("solid", "gradient"),
-        is_gradient=summary.is_gradient,
-        swatches=summary.swatches,
-        brand_a=summary.brand_a,
-        brand_b=summary.brand_b,
-        named_selection=summary.named_selection,
+        artboard_count=summary.artboard_count,
+        primary_index=summary.primary_index,
+        artboards=[ArtboardInfo(**{k: v for k, v in vars(b).items()
+                                   if k in ArtboardInfo.model_fields})
+                   for b in summary.artboards],
     )
 
 
 @app.post("/generate")
 def generate_endpoint(body: GenerateRequestBody):
     job = _job_dir(body.job_id)
-    working_svg = (job / "working.svg").read_text(encoding="utf-8")
+    # Use the CSR's chosen artboard as the primary logo.
+    board = job / f"working_{body.artboard}.svg"
+    if not board.is_file():
+        raise HTTPException(status_code=400, detail="invalid artboard")
+    working_svg = board.read_text(encoding="utf-8")
     ai_path = job / "source.ai"
     eps_path = job / "source.eps"
 

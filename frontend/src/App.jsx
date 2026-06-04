@@ -2,17 +2,27 @@ import { useState } from "react";
 import Uploader from "./components/Uploader.jsx";
 import SvgPreview from "./components/SvgPreview.jsx";
 import ColorConfirm from "./components/ColorConfirm.jsx";
+import ArtboardChooser from "./components/ArtboardChooser.jsx";
 import { ingest, generate, downloadBlob } from "./api.js";
 
 export default function App() {
   const [result, setResult] = useState(null);
+  const [chosen, setChosen] = useState(null); // selected artboard index
   const [brand, setBrand] = useState("");
   const [box, setBox] = useState(null);
   const [removed, setRemoved] = useState([]);
   const [mode, setMode] = useState("box"); // 'box' | 'named'
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [manual, setManual] = useState(null); // {reasons} when active board is out of scope
   const [done, setDone] = useState(false);
+
+  // The active artboard (the chosen primary logo) drives the rest of the flow.
+  // `chosen` is the artboard's page index (.index), not a list position.
+  const active =
+    result && chosen != null
+      ? result.artboards.find((b) => b.index === chosen)
+      : null;
 
   async function handleIngest(payload) {
     setBusy(true);
@@ -21,11 +31,24 @@ export default function App() {
       const r = await ingest(payload);
       setResult(r);
       setBrand(r.brand);
-      setMode(r.named_selection ? "named" : "box");
+      // Single artboard -> proceed straight away; multiple -> force a choice.
+      pickArtboard(r, r.artboard_count === 1 ? r.primary_index : null);
     } catch (e) {
       setError(e.message);
     } finally {
       setBusy(false);
+    }
+  }
+
+  function pickArtboard(r, index) {
+    setChosen(index);
+    setBox(null);
+    setRemoved([]);
+    setManual(null);
+    if (index != null) {
+      const b = r.artboards.find((x) => x.index === index);
+      setMode(b.named_selection ? "named" : "box");
+      if (!b.supported) setManual({ reasons: b.reasons });
     }
   }
 
@@ -36,15 +59,16 @@ export default function App() {
       const blob = await generate({
         job_id: result.job_id,
         brand,
+        artboard: chosen,
         selection_box: mode === "box" ? box : null,
         removed_colors: removed,
-        brand_a: result.brand_a,
-        brand_b: result.brand_b,
+        brand_a: active.brand_a,
+        brand_b: active.brand_b,
       });
       downloadBlob(blob, `${brand} Files.zip`);
       setDone(true);
     } catch (e) {
-      if (e.manual) setResult({ ...result, classification: "manual", reasons: e.reasons });
+      if (e.manual) setManual({ reasons: e.reasons });
       else setError(e.message);
     } finally {
       setBusy(false);
@@ -53,8 +77,10 @@ export default function App() {
 
   function reset() {
     setResult(null);
+    setChosen(null);
     setBox(null);
     setRemoved([]);
+    setManual(null);
     setDone(false);
     setError(null);
   }
@@ -78,16 +104,32 @@ export default function App() {
         </Card>
       )}
 
-      {result && result.classification === "manual" && (
-        <ManualFlag reasons={result.reasons} onReset={reset} />
+      {result && chosen == null && (
+        <ArtboardChooser
+          artboards={result.artboards}
+          primaryIndex={result.primary_index}
+          onPick={(i) => pickArtboard(result, i)}
+        />
       )}
 
-      {result && result.classification !== "manual" && (
+      {active && manual && (
+        <ManualFlag reasons={manual.reasons} onReset={reset} />
+      )}
+
+      {active && !manual && (
         <div className="grid gap-6 lg:grid-cols-2">
           <Card>
             <StepHeader n="2a" title="Mark the icon" />
+            {result.artboard_count > 1 && (
+              <button
+                onClick={() => setChosen(null)}
+                className="mb-2 text-xs text-brand-navy underline"
+              >
+                ← {active.label} · change artboard
+              </button>
+            )}
             <SelectionModeToggle
-              hasNamed={!!result.named_selection}
+              hasNamed={!!active.named_selection}
               mode={mode}
               setMode={setMode}
             />
@@ -99,13 +141,13 @@ export default function App() {
               </p>
             )}
             <SvgPreview
-              workingSvg={result.working_svg}
-              viewbox={result.viewbox}
+              workingSvg={active.working_svg}
+              viewbox={active.viewbox}
               box={box}
               onBox={setBox}
               enabled={mode === "box"}
             />
-            {result.named_selection?.overlap_warning && (
+            {active.named_selection?.overlap_warning && (
               <Banner tone="warn">
                 Icon and wordmark overlap heavily — if the mark is fused into a
                 letter, this lockup may need manual handling (§9).
@@ -116,7 +158,7 @@ export default function App() {
           <Card>
             <StepHeader n="2b" title="Confirm colors" />
             <ColorConfirm
-              result={result}
+              result={active}
               removed={removed}
               onToggle={(c) =>
                 setRemoved((r) => (r.includes(c) ? r.filter((x) => x !== c) : [...r, c]))
@@ -134,7 +176,7 @@ export default function App() {
                 />
               </label>
               <div className="mb-3 text-xs text-slate-500">
-                converter: {result.converter} · {result.is_gradient ? "gradient" : "solid"} recipes
+                converter: {result.converter} · {active.is_gradient ? "gradient" : "solid"} recipes
               </div>
               <button
                 disabled={busy}
