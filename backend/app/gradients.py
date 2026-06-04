@@ -26,10 +26,12 @@ class GradientSpec:
     direction: tuple[float, float]  # unit vector (linear only; radial -> (1,0))
 
     def darkest_stop(self) -> str:
-        solids = [(c, luminance(c)) for _, c, _ in self.stops if normalize_hex(c)]
+        # Normalize first: pdf2svg emits stop colors as rgb(%, %, %), not hex,
+        # so luminance() must run on the normalized hex, not the raw string.
+        solids = [hx for _, c, _ in self.stops if (hx := normalize_hex(c))]
         if not solids:
             return "#000000"
-        return min(solids, key=lambda t: t[1])[0]
+        return min(solids, key=luminance)
 
 
 def _stop_color(stop: etree._Element) -> str:

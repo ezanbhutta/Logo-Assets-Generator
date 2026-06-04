@@ -2,6 +2,7 @@
 completion. Endpoints: POST /ingest, POST /generate, GET /health."""
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import time
@@ -134,6 +135,18 @@ def generate_endpoint(body: GenerateRequestBody):
         shutil.rmtree(job, ignore_errors=True)
         raise HTTPException(status_code=422, detail={
             "error": "manual_required", "reasons": e.reasons})
+    except HTTPException:
+        raise
+    except Exception:
+        # Unexpected failure: log the traceback (visible in server logs) and
+        # return a clear message instead of a bare 500.
+        logging.getLogger("uvicorn.error").exception(
+            "generate failed for job %s artboard %s", body.job_id, body.artboard)
+        shutil.rmtree(job, ignore_errors=True)
+        raise HTTPException(status_code=500, detail={
+            "error": "generate_failed",
+            "message": "Generation hit an unexpected error on this logo. "
+                       "It has been logged — please share the .ai so it can be fixed."})
 
     filename = f"{req.brand} Files.zip"
     # Delete the whole job dir once the zip has been streamed (stateless — §2).
