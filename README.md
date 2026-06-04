@@ -61,6 +61,24 @@ System packages (installed by `scripts/setup.sh`): `pdf2svg`,
 `npm run build` in `frontend/` emits `frontend/dist/`, which `main.py` mounts at
 `/`. Then `uvicorn app.main:app` serves the UI and API from one origin.
 
+## Deploy (Docker / Render)
+
+The engine shells out to native binaries (`pdf2svg`, `rsvg-convert`, `cairo`),
+so it needs a **container host**, not a serverless runtime like Vercel. The
+included `Dockerfile` is a multi-stage build (Vite frontend → FastAPI backend +
+toolchain) that serves UI **and** API from one container.
+
+```bash
+docker build -t logo-engine .
+docker run -p 8000:8000 logo-engine     # http://localhost:8000
+```
+
+**Render (one-click):** the repo ships a `render.yaml` Blueprint. In Render →
+*New → Blueprint* → connect this repo; it builds the `Dockerfile` and runs a
+single web service with a `/health` check. Render injects `$PORT`, which the
+container honors. (Free plan sleeps when idle; bump to `starter` for always-on.)
+Any Docker host works the same way — Railway, Fly.io, Cloud Run, a VPS.
+
 ## The CSR flow (§3)
 
 1. **Brand name** — defaults to the `.ai` filename.

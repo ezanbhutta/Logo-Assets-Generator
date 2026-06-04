@@ -1,0 +1,16 @@
+.git
+.github
+.claude
+.venv
+venv
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+frontend/node_modules
+frontend/dist
+frontend/.vite
+*.zip
+fixtures/reference/*.zip
+.DS_Store
+.idea
+.vscode
