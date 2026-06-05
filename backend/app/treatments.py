@@ -103,9 +103,11 @@ def _copy_pruned(ctx: TreatmentContext, include: set[str]) -> etree._Element:
     all transforms are preserved."""
     vroot = copy.deepcopy(ctx.model.root)
     for el in list(vroot.iter()):
-        if local_name(el) in {"path", "rect", "circle", "ellipse", "polygon",
-                              "polyline", "line"}:
-            if el.get(LPID_ATTR) not in include:
+        if local_name(el) in _LEAVES:
+            lpid = el.get(LPID_ATTR)
+            # only prune tagged artwork leaves; untagged clip/defs paths stay so
+            # clips keep working (an emptied clipPath hides the clipped artwork).
+            if lpid and lpid not in include:
                 el.getparent().remove(el)
     return vroot
 
@@ -130,6 +132,8 @@ def _recolor(ctx: TreatmentContext, vroot: etree._Element, treatment: Treatment,
         if local_name(el) not in _LEAVES:
             continue
         lpid = el.get(LPID_ATTR)
+        if not lpid:
+            continue                              # clip/defs path — not artwork
         node = ctx.model.by_lpid.get(lpid)
         if treatment.recolor == "full":
             continue
@@ -141,9 +145,9 @@ def _recolor(ctx: TreatmentContext, vroot: etree._Element, treatment: Treatment,
         if color is not None:
             _apply(el, color, node)
 
-    # Contrast guard: ensure the artwork is actually visible on a solid bg.
-    if bg and bg[0] == "solid":
-        _ensure_contrast(ctx, vroot, treatment, mark, bg[1])
+    # Contrast guard: ensure every element reads against what's behind it.
+    if bg is not None:
+        _ensure_contrast(ctx, vroot, treatment, mark, bg)
 
 
 def _effective_fg(treatment: Treatment, mark: str, lpid: str, node,
@@ -161,22 +165,45 @@ def _effective_fg(treatment: Treatment, mark: str, lpid: str, node,
 
 
 def _ensure_contrast(ctx: TreatmentContext, vroot: etree._Element,
-                     treatment: Treatment, mark: str, bg_value: object) -> None:
-    """Flip any element that would blend into the background to white/black —
-    whichever reads. Fixes single-color logos whose color equals the brand
-    background (e.g. a purple mark on the purple brand-A slot)."""
-    bg_hex = normalize_hex(bg_value)
-    if not bg_hex:
-        return
+                     treatment: Treatment, mark: str, bg: tuple[str, object]) -> None:
+    """Flip any element that would blend into its BACKDROP to white/black —
+    whichever reads. The backdrop is what's actually behind the element: a
+    larger element drawn beneath it (e.g. an icon's gear), or the canvas
+    background. Layer-aware so:
+      * detail sitting on a colored/gradient shape is kept (white circuit on a
+        purple gear stays white, not knocked to black vs the white canvas),
+      * mono treatments don't merge detail into the shape — the detail flips so
+        the pattern stays visible.
+    A single-color mark on its own brand background still knocks out (no shape
+    beneath it -> backdrop is the canvas)."""
+    bg_kind, bg_value = bg
+    canvas = normalize_hex(bg_value) if bg_kind == "solid" else "gradient"
+
     icon = set(ctx.selection.icon)
-    knock = best_knockout(bg_hex)
-    for el in vroot.iter():
-        if local_name(el) not in _LEAVES:
-            continue
-        node = ctx.model.by_lpid.get(el.get(LPID_ATTR))
-        fg = _effective_fg(treatment, mark, el.get(LPID_ATTR), node, icon)
-        if fg and contrast_ratio(fg, bg_hex) < MIN_CONTRAST:
+    leaves = [el for el in vroot.iter() if local_name(el) in _LEAVES]
+    nodes = [ctx.model.by_lpid.get(el.get(LPID_ATTR)) for el in leaves]
+    fgs = [_effective_fg(treatment, mark, el.get(LPID_ATTR), n, icon)
+           for el, n in zip(leaves, nodes)]
+
+    for i, el in enumerate(leaves):
+        node, fg = nodes[i], fgs[i]
+        if fg is None or not node or not node.bbox:
+            continue                              # keeps a gradient -> colorful, leave it
+        cx, cy = node.centroid
+        backdrop = canvas
+        # the topmost LARGER element drawn beneath this one that covers its center
+        for j in range(i):
+            bn = nodes[j]
+            if (bn and bn.bbox and bn.area > node.area
+                    and bn.bbox[0] <= cx <= bn.bbox[2]
+                    and bn.bbox[1] <= cy <= bn.bbox[3]):
+                backdrop = "gradient" if fgs[j] is None else fgs[j]
+        if backdrop in (None, "gradient"):
+            continue                              # gradient/unknown backdrop -> white/black reads
+        if contrast_ratio(fg, backdrop) < MIN_CONTRAST:
+            knock = best_knockout(backdrop)
             _apply(el, knock, node)
+            fgs[i] = knock                         # so elements above see the new color
 
 
 def _apply(el: etree._Element, color: str, node) -> None:

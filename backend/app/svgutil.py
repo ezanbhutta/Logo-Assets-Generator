@@ -17,6 +17,10 @@ LEAF_TAGS = {
     "path", "rect", "circle", "ellipse", "polygon", "polyline", "line",
 }
 
+# Containers whose leaf children only DEFINE things (clips, masks, gradients) —
+# never drawable artwork.
+_NONDRAWABLE = {"defs", "clipPath", "mask", "pattern", "symbol", "marker"}
+
 _STYLE_RULE_RE = re.compile(r"([^{}]+)\{([^}]*)\}", re.S)
 
 
@@ -46,10 +50,17 @@ def qn(tag: str) -> str:
 
 
 def iter_leaves(root: etree._Element):
-    """Yield every drawable leaf element in document order."""
+    """Yield every drawable leaf element in document order. Skips paths/shapes
+    that only DEFINE things (inside <clipPath>/<defs>/<mask>/<pattern>/<symbol>/
+    <marker>) — those are not artwork and must not be tagged, selected,
+    recolored, or pruned (pruning a clipPath's path empties the clip and makes
+    the clipped artwork vanish)."""
     for el in root.iter():
-        if local_name(el) in LEAF_TAGS:
-            yield el
+        if local_name(el) not in LEAF_TAGS:
+            continue
+        if any(local_name(a) in _NONDRAWABLE for a in el.iterancestors()):
+            continue
+        yield el
 
 
 def parse_style_classes(root: etree._Element) -> dict[str, dict[str, str]]:

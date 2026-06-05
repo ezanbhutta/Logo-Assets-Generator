@@ -102,6 +102,43 @@ def test_contrast_guard_keeps_two_color_logo(solid_model):
     assert reds > 0   # icon kept its red, not knocked out
 
 
+def test_contrast_guard_is_layer_aware_keeps_detail_on_shape():
+    """White detail sitting ON a colored shape stays white on a white canvas —
+    the guard compares it to the shape beneath, not the canvas (Orova: white
+    circuit on the purple gear must not flip to black)."""
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">'
+           '<circle cx="100" cy="100" r="60" fill="#7229ff"/>'
+           '<rect x="92" y="60" width="16" height="80" fill="#ffffff"/></svg>')
+    m = WorkingSVG.from_string(svg)
+    sel = selection.select_by_box(m, (38, 38, 124, 124))
+    ctx = treatments.build_context(m, sel, colors.detect(m))
+    out = treatments.render_variant(ctx, "logo", SOLID_LOGO[0], True)  # white bg, full
+    img = render(out).convert("RGB")
+    # full-color on white = purple + white detail only; nothing should be black
+    blacks = sum(near(img.getpixel((x, y)), (0, 0, 0))
+                 for x in range(0, CANVAS_W, 12) for y in range(0, CANVAS_H, 12))
+    assert blacks == 0, "white detail on the shape was wrongly knocked to black"
+
+
+def test_clipped_shape_survives_subset_pruning():
+    """A clip-path definition is not artwork and must never be pruned — else the
+    clipped shape (e.g. the gradient gear) vanishes in the icon subset (Orova)."""
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">'
+           '<defs><clipPath id="c"><circle cx="60" cy="60" r="40"/></clipPath></defs>'
+           '<rect x="20" y="20" width="80" height="80" fill="#7229ff" clip-path="url(#c)"/>'
+           '<rect x="150" y="150" width="30" height="30" fill="#111111"/></svg>')
+    m = WorkingSVG.from_string(svg)
+    assert len(m.ink_nodes) == 2          # the clipPath's <circle> is NOT artwork
+    sel = selection.select_by_box(m, (15, 15, 90, 90))   # only the clipped rect
+    ctx = treatments.build_context(m, sel, colors.detect(m))
+    out = treatments.render_variant(ctx, "icon", SOLID_ICON[0], True)
+    img = render(out).convert("RGB")
+    bg = img.getpixel((5, 5))
+    ink = sum(1 for x in range(0, CANVAS_W, 12) for y in range(0, CANVAS_H, 12)
+              if not near(img.getpixel((x, y)), bg, 30))
+    assert ink > 0, "clipped shape vanished — clipPath was pruned"
+
+
 def test_gradient_hero_white_knockout_on_rebuilt_gradient(gradient_model):
     """§6.4/02 + §8 rules 4&5: Logo 02 = white art on a full-bleed rebuilt
     gradient. Background differs corner-to-corner (gradient really spans)."""
