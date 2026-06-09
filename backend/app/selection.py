@@ -185,6 +185,28 @@ def _in_box(centroid, box) -> bool:
     return x <= centroid[0] <= x + w and y <= centroid[1] <= y + h
 
 
+def _covered(node, box) -> bool:
+    """Is ``node`` part of the marked region? A glyph counts when its centroid is
+    inside the box OR most of it is covered — the box spans ≥60% of its width and
+    ≥30% of its height. The forgiving height keeps descenders/ascenders (a 'y',
+    'g', 'p') whose centroid dips below the others from being dropped when the CSR
+    draws a box near the baseline; the width test still rejects neighbors that the
+    box only clips, and a mark on another line (≈0 vertical overlap) stays out."""
+    if box is None or node.bbox is None or node.centroid is None:
+        return False
+    x, y, w, h = box
+    cx, cy = node.centroid
+    if x <= cx <= x + w and y <= cy <= y + h:
+        return True
+    bx0, by0, bx1, by1 = node.bbox
+    nw, nh = bx1 - bx0, by1 - by0
+    if nw <= 0 or nh <= 0:
+        return False
+    ox = max(0.0, min(bx1, x + w) - max(bx0, x))
+    oy = max(0.0, min(by1, y + h) - max(by0, y))
+    return ox / nw >= 0.6 and oy / nh >= 0.3
+
+
 def select(model: WorkingSVG,
            logo_box: tuple[float, float, float, float] | None = None,
            icon_box: tuple[float, float, float, float] | None = None):
@@ -207,7 +229,7 @@ def select(model: WorkingSVG,
     panels = _panel_ids(ink, model.viewbox)
     pool = [n for n in ink if n.lpid not in panels] or ink
     logo_ids = [n.lpid for n in pool
-                if logo_box is None or _in_box(n.centroid, logo_box)]
+                if logo_box is None or _covered(n, logo_box)]
     if not logo_ids:                       # box missed everything -> whole artwork
         logo_ids = [n.lpid for n in pool]
     logo_set = set(logo_ids)
@@ -219,7 +241,7 @@ def select(model: WorkingSVG,
         # of the lockup OR a standalone mark elsewhere on the sheet (an icon
         # derived from the wordmark, shown on its own tile). Either way the icon
         # files come from exactly what the box covers.
-        icon_ids = [n.lpid for n in pool if _in_box(n.centroid, icon_box)]
+        icon_ids = [n.lpid for n in pool if _covered(n, icon_box)]
         source = "box"
         if not icon_ids:                   # box missed -> named/auto within the logo
             icon_ids, source = _icon_fallback(model, logo_set)

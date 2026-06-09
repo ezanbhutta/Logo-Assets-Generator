@@ -178,6 +178,22 @@ def test_auto_segment_single_lockup_marks_icon_no_carve():
     assert len(sel.icon) == 1 and len(sel.wordmark) == 4
 
 
+def test_logo_box_keeps_descender_letters():
+    """A box drawn near the x-height baseline must still keep a 'y'/'g'/'p' whose
+    descender pulls its centroid below the other letters — the Tays 'y' bug,
+    where a hand-drawn logo box dropped the y and shipped 'ta s'."""
+    from app.svg_model import WorkingSVG
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200">'
+           '<rect x="40" y="70" width="20" height="30" fill="#111"/>'    # t  c=(50,85)
+           '<rect x="70" y="70" width="20" height="30" fill="#111"/>'    # a  c=(80,85)
+           '<rect x="100" y="70" width="20" height="55" fill="#111"/>'   # y  c=(110,97.5) descender
+           '<rect x="130" y="70" width="20" height="30" fill="#111"/></svg>')  # s  c=(140,85)
+    m = WorkingSVG.from_string(svg)
+    # box hugging the x-height (y 68..92): the y's centroid (97.5) sits below it
+    sel, _ = selection.select(m, logo_box=(30, 68, 120, 24), icon_box=None)
+    assert len(sel.full) == 4                     # all four, incl. the descender 'y'
+
+
 def test_use_text_is_flattened_and_excludable():
     """pdf2svg renders text as <use> of glyph defs. Those must be inlined so the
     text is tracked geometry that a logo box can exclude — otherwise a brand
