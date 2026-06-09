@@ -194,6 +194,54 @@ def test_logo_box_keeps_descender_letters():
     assert len(sel.full) == 4                     # all four, incl. the descender 'y'
 
 
+def test_logo_box_keeps_detached_trailing_period():
+    """A wordmark's trailing period/sparkle is a SEPARATE path sitting in a gap
+    after the last letter. A CSR draws the logo box around the visible letters
+    and stops at the 's'; the floating '.' lands just outside. It must still be
+    kept — the Tays 'tays.' bug, where the period (a star-dot) was dropped and
+    'tays' shipped without it."""
+    from app.svg_model import WorkingSVG
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200">'
+           '<rect x="40"  y="70" width="22" height="40" fill="#111"/>'   # t
+           '<rect x="72"  y="70" width="22" height="40" fill="#111"/>'   # a
+           '<rect x="104" y="70" width="22" height="40" fill="#111"/>'   # y
+           '<rect x="136" y="70" width="22" height="40" fill="#111"/>'   # s  right edge = 158
+           '<rect x="170" y="100" width="9" height="9" fill="#111"/></svg>')  # period c=(174.5,104.5)
+    m = WorkingSVG.from_string(svg)
+    # box ends at x=160, just past the 's' — the period (centroid 174.5) is outside
+    sel, _ = selection.select(m, logo_box=(30, 60, 130, 60), icon_box=None)
+    assert len(sel.full) == 5                     # the detached period is reattached
+    # the smallest node (the period) is the one that was rescued
+    period = min(m.ink_nodes, key=lambda n: n.area)
+    assert period.lpid in set(sel.full)
+
+
+def test_icon_box_excludes_backing_tile():
+    """A standalone icon often sits alone on its own presentation tile. That tile
+    backs only the one mark, so the old 'panel backs >=2' rule let it slip through
+    and the icon box captured the whole tile — shipping a filled rectangle instead
+    of a clean mark (the Tays 't' icon came out as a black box). The tile has a
+    same-size peer (the wordmark's tile), which is the real giveaway, so it must
+    be dropped from the icon."""
+    from app.svg_model import WorkingSVG
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600">'
+           '<rect x="40"  y="40" width="400" height="300" fill="#fdf6ec"/>'   # wordmark tile
+           '<rect x="100" y="160" width="40" height="60" fill="#111"/>'       # wordmark (3)
+           '<rect x="160" y="160" width="40" height="60" fill="#111"/>'
+           '<rect x="220" y="160" width="40" height="60" fill="#111"/>'
+           '<rect x="560" y="40" width="400" height="300" fill="#fdf6ec"/>'   # icon tile (backs 1)
+           '<rect x="720" y="140" width="80" height="120" fill="#111"/></svg>')  # the icon mark
+    m = WorkingSVG.from_string(svg)
+    sel, include_icon = selection.select(m, logo_box=(40, 40, 420, 310),
+                                         icon_box=(580, 60, 360, 260))
+    assert include_icon is True
+    assert len(sel.icon) == 1                     # just the mark, not the tile behind it
+    assert len(sel.full) == 3                     # wordmark lockup; the icon is a standalone mark
+    vb_area = 1000 * 600
+    assert all(n.area < 0.08 * vb_area            # nothing tile-sized leaked into the icon
+               for n in m.ink_nodes if n.lpid in set(sel.icon))
+
+
 def test_use_text_is_flattened_and_excludable():
     """pdf2svg renders text as <use> of glyph defs. Those must be inlined so the
     text is tracked geometry that a logo box can exclude — otherwise a brand

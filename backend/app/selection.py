@@ -207,6 +207,38 @@ def _covered(node, box) -> bool:
     return ox / nw >= 0.6 and oy / nh >= 0.3
 
 
+def _attach_punct(pool: list, ids: list[str]) -> list[str]:
+    """Pull a small, detached punctuation-like mark — a period, a sparkle-dot, an
+    accent — into a box selection when it floats right against the selected glyphs
+    on the same line. A CSR drawing the logo box around ``tays`` stops at the
+    ``s``; the period just past it is a *separate* path with a kerning gap before
+    it, so it would otherwise be dropped — losing the ``.`` that is part of the
+    wordmark. Only marks clearly smaller than the glyphs, sitting on the same
+    line and within ~one glyph of the run, are pulled in; neighbours, body copy,
+    and a mark on another line stay out."""
+    have = set(ids)
+    chosen = [n for n in pool if n.lpid in have and n.bbox]
+    if not chosen:
+        return ids
+    sb = _bbox_of(chosen)
+    mh = _median_height(chosen)
+    if mh <= 0:
+        return ids
+    extra: list[str] = []
+    for n in pool:
+        if n.lpid in have or not n.bbox:
+            continue
+        if max(n.bbox[2] - n.bbox[0], n.bbox[3] - n.bbox[1]) > 0.7 * mh:
+            continue                                   # bigger than punctuation -> a glyph
+        cx, cy = n.centroid
+        if not (sb[1] - 0.15 * mh <= cy <= sb[3] + 0.15 * mh):
+            continue                                   # off this line
+        gap = max(sb[0] - n.bbox[2], n.bbox[0] - sb[2], 0.0)
+        if gap <= 0.8 * mh:                            # snug against the run, left or right
+            extra.append(n.lpid)
+    return ids + extra
+
+
 def select(model: WorkingSVG,
            logo_box: tuple[float, float, float, float] | None = None,
            icon_box: tuple[float, float, float, float] | None = None):
@@ -232,6 +264,8 @@ def select(model: WorkingSVG,
                 if logo_box is None or _covered(n, logo_box)]
     if not logo_ids:                       # box missed everything -> whole artwork
         logo_ids = [n.lpid for n in pool]
+    elif logo_box is not None:             # keep a trailing period/sparkle on the wordmark
+        logo_ids = _attach_punct(pool, logo_ids)
     logo_set = set(logo_ids)
 
     icon_ids: list[str] = []
@@ -531,12 +565,16 @@ def _detect_swatches(nodes: list, minside: float) -> set[str]:
 
 def _panel_ids(nodes: list, viewbox) -> set[str]:
     """Find presentation **panels** — the repeated tiles a brand sheet lays each
-    logo variation on. A panel is a large element that (a) backs ≥2 other marks
-    (their centroids sit on it) and (b) has a similar-size large peer elsewhere.
+    logo variation on. A panel is a large element that (a) backs ≥1 other mark
+    (its centroid sits on the tile) and (b) has a similar-size large peer
+    elsewhere.
 
     The peer requirement is the safety catch: a *single* logo never duplicates
     its own backing shape, so a lone large shape (e.g. Orova's gear carrying its
-    circuitry) is never mistaken for scaffolding — only repeated tiles are."""
+    circuitry) is never mistaken for scaffolding — only repeated tiles are. The
+    backing test only needs ≥1 mark because a standalone **icon** often sits
+    alone on its own tile (the tile backs just the one mark); requiring ≥2 missed
+    that tile and leaked it into the icon files as a filled rectangle."""
     if not viewbox:
         return set()
     vb_area = (viewbox[2] - viewbox[0]) * (viewbox[3] - viewbox[1])
@@ -548,7 +586,7 @@ def _panel_ids(nodes: list, viewbox) -> set[str]:
         backs = sum(1 for m in nodes if m is not n and m.bbox
                     and n.bbox[0] <= m.centroid[0] <= n.bbox[2]
                     and n.bbox[1] <= m.centroid[1] <= n.bbox[3])
-        if backs < 2:
+        if backs < 1:
             continue
         if any(m is not n and 0.77 <= n.area / max(m.area, 1e-6) <= 1.3 for m in large):
             panels.add(n.lpid)
