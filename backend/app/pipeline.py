@@ -133,6 +133,7 @@ class GenerateRequest:
     brand: str
     working_svg: str
     selection_box: tuple[float, float, float, float] | None = None
+    logo_box: tuple[float, float, float, float] | None = None
     use_named_layers: bool = False
     removed_colors: list[str] = field(default_factory=list)
     brand_a: str | None = None
@@ -164,21 +165,11 @@ def run_generate(req: GenerateRequest, workdir: Path) -> GenerateResult:
     if not report.supported:
         raise ManualFlag(report.reasons)  # §8 rule 6: no partial package
 
-    # The icon set is OPTIONAL. Generate it only when the CSR marked the icon
-    # (a box) or the file has named layers; otherwise produce just the logo
-    # design files — don't force an icon (per request).
-    if req.selection_box is not None:
-        sel = selection.resolve(model, req.selection_box)  # box, with fallback
-        include_icon = True
-    else:
-        named = selection.detect_named_layers(model)
-        if named is not None and named.icon:
-            sel = named
-            include_icon = True
-        else:
-            sel = selection.Selection(
-                icon=[], wordmark=[n.lpid for n in model.ink_nodes], source="none")
-            include_icon = False
+    # Logo region (logo_box) carves the real logo out of a brand-sheet / bento;
+    # icon region (selection_box) is optional. Everything outside the logo box is
+    # ignored. The icon set is generated only when an icon was marked / detected.
+    sel, include_icon = selection.select(
+        model, logo_box=req.logo_box, icon_box=req.selection_box)
 
     ctx = treatments.build_context(model, sel, report)
     builder = PackageBuilder(req.brand, workdir)

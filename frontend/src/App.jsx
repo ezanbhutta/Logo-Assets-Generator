@@ -11,9 +11,10 @@ export default function App() {
   const [result, setResult] = useState(null);
   const [chosen, setChosen] = useState(null); // selected artboard index
   const [brand, setBrand] = useState("");
-  const [box, setBox] = useState(null);
+  const [logoBox, setLogoBox] = useState(null); // logo region (carve out a bento)
+  const [iconBox, setIconBox] = useState(null);  // icon region
   const [removed, setRemoved] = useState([]);
-  const [mode, setMode] = useState("box"); // 'box' | 'named'
+  const [mark, setMark] = useState("icon"); // 'logo' | 'icon' | 'named' — active tool
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [manual, setManual] = useState(null); // {reasons} when active board is out of scope
@@ -44,12 +45,13 @@ export default function App() {
 
   function pickArtboard(r, index) {
     setChosen(index);
-    setBox(null);
+    setLogoBox(null);
+    setIconBox(null);
     setRemoved([]);
     setManual(null);
     if (index != null) {
       const b = r.artboards.find((x) => x.index === index);
-      setMode(b.named_selection ? "named" : "box");
+      setMark(b.named_selection ? "named" : "icon");
       if (!b.supported) setManual({ reasons: b.reasons });
     }
   }
@@ -62,7 +64,8 @@ export default function App() {
         job_id: result.job_id,
         brand,
         artboard: chosen,
-        selection_box: mode === "box" ? box : null,
+        logo_box: logoBox,
+        selection_box: mark === "named" ? null : iconBox,
         removed_colors: removed,
         brand_a: active.brand_a,
         brand_b: active.brand_b,
@@ -80,7 +83,8 @@ export default function App() {
   function reset() {
     setResult(null);
     setChosen(null);
-    setBox(null);
+    setLogoBox(null);
+    setIconBox(null);
     setRemoved([]);
     setManual(null);
     setDone(false);
@@ -132,7 +136,7 @@ export default function App() {
       {active && !manual && (
         <div className="grid gap-6 lg:grid-cols-2">
           <Card>
-            <StepHeader n="2a" title="Mark the icon" />
+            <StepHeader n="2a" title="Mark logo & icon" />
             {result.artboard_count > 1 && (
               <button
                 onClick={() => setChosen(null)}
@@ -141,24 +145,29 @@ export default function App() {
                 ← {active.label} · change artboard
               </button>
             )}
-            <SelectionModeToggle
+            <MarkTools
+              mark={mark}
+              setMark={setMark}
               hasNamed={!!active.named_selection}
-              mode={mode}
-              setMode={setMode}
+              logoBox={logoBox}
+              iconBox={iconBox}
+              clearLogo={() => setLogoBox(null)}
+              clearIcon={() => setIconBox(null)}
             />
-            {mode === "box" && (
-              <p className="mb-2 text-xs text-slate-500">
-                Drag one box around the icon to also get the icon set.{" "}
-                <span className="text-slate-400">Optional</span> — skip it and only
-                the logo design files are generated.
-              </p>
-            )}
+            <p className="mb-2 text-xs text-slate-500">
+              {mark === "logo"
+                ? "Drag a box around the actual logo — use this for a brand-sheet / bento; everything outside is ignored."
+                : mark === "icon"
+                ? "Drag a box around the icon (optional). It must sit inside the logo region."
+                : "Using the file's detected Icon layer."}
+            </p>
             <SvgPreview
               workingSvg={active.working_svg}
               viewbox={active.viewbox}
-              box={box}
-              onBox={setBox}
-              enabled={mode === "box"}
+              logoBox={logoBox}
+              iconBox={iconBox}
+              active={mark === "named" ? null : mark}
+              onBox={(b) => (mark === "logo" ? setLogoBox(b) : setIconBox(b))}
             />
             {active.named_selection?.overlap_warning && (
               <Banner tone="warn">
@@ -198,13 +207,14 @@ export default function App() {
               >
                 {busy
                   ? "Building package…"
-                  : mode === "box" && !box
+                  : mark !== "named" && !iconBox
                   ? "Generate logo files (no icon) →"
                   : "Generate & download .zip"}
               </button>
-              {mode === "box" && !box && (
+              {mark !== "named" && !iconBox && (
                 <p className="mt-2 text-xs text-slate-500">
-                  No icon box drawn — the package will contain the logo set only.
+                  No icon box drawn — the package will contain the logo set only
+                  {logoBox ? " (from the marked logo region)" : ""}.
                 </p>
               )}
               {done && (
@@ -236,23 +246,35 @@ export default function App() {
   );
 }
 
-function SelectionModeToggle({ hasNamed, mode, setMode }) {
+function MarkTools({ mark, setMark, hasNamed, logoBox, iconBox, clearLogo, clearIcon }) {
+  const Tool = ({ id, label, dot }) => (
+    <button
+      onClick={() => setMark(id)}
+      className={`inline-flex items-center gap-1.5 rounded px-3 py-1 ${
+        mark === id ? "bg-pulse-500 text-white" : "text-slate-600"
+      }`}
+    >
+      {dot && <span className={`h-2 w-2 rounded-full ${dot}`} />}
+      {label}
+    </button>
+  );
   return (
-    <div className="mb-3 inline-flex rounded-md border border-slate-300 p-0.5 text-sm">
-      {hasNamed && (
-        <button
-          onClick={() => setMode("named")}
-          className={`rounded px-3 py-1 ${mode === "named" ? "bg-pulse-500 text-white" : "text-slate-600"}`}
-        >
-          Detected Icon layer
+    <div className="mb-2 flex flex-wrap items-center gap-2 text-sm">
+      <div className="inline-flex rounded-md border border-slate-300 p-0.5">
+        <Tool id="logo" label="Logo region" dot="bg-pulse-500" />
+        <Tool id="icon" label="Icon" dot="bg-emerald-500" />
+        {hasNamed && <Tool id="named" label="Detected layer" />}
+      </div>
+      {logoBox && (
+        <button onClick={clearLogo} className="text-xs text-slate-400 underline hover:text-slate-600">
+          clear logo
         </button>
       )}
-      <button
-        onClick={() => setMode("box")}
-        className={`rounded px-3 py-1 ${mode === "box" ? "bg-pulse-500 text-white" : "text-slate-600"}`}
-      >
-        Draw a box
-      </button>
+      {iconBox && (
+        <button onClick={clearIcon} className="text-xs text-slate-400 underline hover:text-slate-600">
+          clear icon
+        </button>
+      )}
     </div>
   );
 }

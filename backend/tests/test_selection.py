@@ -73,6 +73,41 @@ def test_resolve_falls_back_when_box_misses(solid_model):
     assert miss.source != "box"            # didn't ship the empty box result
 
 
+def test_two_box_carves_bento():
+    """A brand-sheet / bento (logo + standalone icon + color swatches): the logo
+    box carves the real logo (swatches excluded) and the icon box marks the icon."""
+    from app.svg_model import WorkingSVG
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600">'
+           '<path d="M120,70 L150,140 L100,160 Z" fill="#ec1c24"/>'       # logo flame
+           '<rect x="180" y="90" width="60" height="20" fill="#112630"/>'  # wordmark
+           '<rect x="260" y="90" width="60" height="20" fill="#112630"/>'
+           '<path d="M740,70 L770,140 L720,160 Z" fill="#ec1c24"/>'       # standalone icon
+           '<rect x="60" y="420" width="120" height="120" fill="#ec1c24"/>'   # swatches
+           '<rect x="220" y="420" width="120" height="120" fill="#112630"/>'
+           '<rect x="380" y="420" width="120" height="120" fill="#000000"/></svg>')
+    m = WorkingSVG.from_string(svg)
+    assert len(m.ink_nodes) == 7
+    sel, include_icon = selection.select(m, logo_box=(50, 50, 330, 170),
+                                         icon_box=(90, 55, 80, 120))
+    assert len(sel.full) == 3          # logo lockup only (3 swatches + extra icon excluded)
+    assert len(sel.icon) == 1          # the flame in the lockup
+    assert len(sel.wordmark) == 2
+    assert include_icon is True
+
+
+def test_select_no_boxes_is_whole_artwork():
+    sel, include_icon = selection.select(WorkingSVG_for(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
+        '<rect x="10" y="10" width="30" height="30" fill="#ec1c24"/>'
+        '<rect x="60" y="60" width="30" height="30" fill="#112630"/></svg>'))
+    assert len(sel.full) == 2 and include_icon is False   # logo-only, whole artwork
+
+
+def WorkingSVG_for(svg):
+    from app.svg_model import WorkingSVG
+    return WorkingSVG.from_string(svg)
+
+
 def test_resolve_auto_when_no_named_layers():
     """With neither a usable box nor named layers, auto extraction kicks in."""
     from app.svg_model import WorkingSVG

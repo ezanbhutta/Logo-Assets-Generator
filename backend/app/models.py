@@ -34,8 +34,10 @@ class GenerateRequestBody(BaseModel):
     job_id: str
     brand: str
     artboard: int = 0                # which artboard/page is the primary logo
-    # Selection box in SVG USER-SPACE coordinates [x, y, w, h] (§7.2). Null ->
-    # icon optional: logo-only unless named layers exist.
+    # Both boxes are SVG USER-SPACE coordinates [x, y, w, h] (§7.2).
+    # logo_box carves the logo out of a brand-sheet/bento (null -> whole artwork).
+    logo_box: list[float] | None = Field(default=None, min_length=4, max_length=4)
+    # selection_box marks the icon (null -> icon optional / logo-only).
     selection_box: list[float] | None = Field(default=None, min_length=4, max_length=4)
     removed_colors: list[str] = []   # CSR-removed strays (hex)
     brand_a: str | None = None       # confirmed palette overrides

@@ -154,6 +154,70 @@ def resolve(model: WorkingSVG,
     return auto_icon(model)
 
 
+# --- two-box selection: logo region + icon region ---------------------------
+def _in_box(centroid, box) -> bool:
+    if centroid is None or box is None:
+        return False
+    x, y, w, h = box
+    return x <= centroid[0] <= x + w and y <= centroid[1] <= y + h
+
+
+def select(model: WorkingSVG,
+           logo_box: tuple[float, float, float, float] | None = None,
+           icon_box: tuple[float, float, float, float] | None = None):
+    """Resolve the logo region AND the icon region.
+
+    * **logo** = paths inside ``logo_box`` (or all artwork if none). This lets the
+      CSR carve the real logo out of a brand-sheet / bento that also contains an
+      icon, color swatches, and variations — everything outside the box is
+      ignored.
+    * **icon** = paths inside ``icon_box`` (restricted to the logo); falls back to
+      named layers, then auto-extraction, only if a box misses. Optional.
+
+    Returns ``(Selection, include_icon)``. ``Selection.full`` (icon+wordmark) is
+    the logo region, so the logo set is generated from just that.
+    """
+    ink = model.ink_nodes
+    logo_ids = [n.lpid for n in ink
+                if logo_box is None or _in_box(n.centroid, logo_box)]
+    if not logo_ids:                       # box missed everything -> whole artwork
+        logo_ids = [n.lpid for n in ink]
+    logo_set = set(logo_ids)
+
+    icon_ids: list[str] = []
+    source = "none"
+    if icon_box is not None:
+        icon_ids = [n.lpid for n in ink
+                    if n.lpid in logo_set and _in_box(n.centroid, icon_box)]
+        source = "box"
+        if not icon_ids:                   # box missed -> named/auto within the logo
+            icon_ids, source = _icon_fallback(model, logo_set)
+    else:
+        cand = _named_in(model, logo_set)
+        if cand:
+            icon_ids, source = cand, "named-layers"
+
+    wordmark = [i for i in logo_ids if i not in set(icon_ids)]
+    sel = Selection(icon=icon_ids, wordmark=wordmark, source=source,
+                    overlap_warning=_overlap_warning(model, icon_ids, wordmark))
+    return sel, bool(icon_ids)
+
+
+def _named_in(model: WorkingSVG, logo_set: set[str]) -> list[str]:
+    named = detect_named_layers(model)
+    if named is not None and named.icon:
+        return [i for i in named.icon if i in logo_set]
+    return []
+
+
+def _icon_fallback(model: WorkingSVG, logo_set: set[str]):
+    cand = _named_in(model, logo_set)
+    if cand:
+        return cand, "named-layers"
+    auto = [i for i in auto_icon(model).icon if i in logo_set]
+    return (auto, "auto") if auto else ([], "none")
+
+
 # --- integrated-lockup heuristic (§9) ---------------------------------------
 def _overlap_warning(model: WorkingSVG, icon: list[str], wordmark: list[str]) -> bool:
     """Flag when icon & wordmark bounding boxes overlap a lot — a rectangle may

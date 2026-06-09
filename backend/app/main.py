@@ -117,10 +117,12 @@ def generate_endpoint(body: GenerateRequestBody):
     eps_path = job / "source.eps"
 
     box = tuple(body.selection_box) if body.selection_box else None
+    logo_box = tuple(body.logo_box) if body.logo_box else None
     req = GenerateRequest(
         brand=body.brand.strip() or "Logo",
         working_svg=working_svg,
         selection_box=box,
+        logo_box=logo_box,
         removed_colors=body.removed_colors,
         brand_a=body.brand_a,
         brand_b=body.brand_b,
