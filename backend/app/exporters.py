@@ -12,6 +12,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import re
+
 import cairosvg
 from PIL import Image
 
@@ -19,17 +21,39 @@ from .config import CANVAS_W, CANVAS_H, PNG_WIDTH, EXPORT_SCALE, JPG_QUALITY
 
 _RSVG = shutil.which("rsvg-convert")
 
+# Cairo rejects surfaces beyond ~32k px on a side. Keep every raster well under
+# that so an extreme/degenerate aspect ratio can't blow up the render.
+_MAX_RASTER_PX = 16384
+
 
 def write_svg(svg_text: str, path: Path) -> None:
     path.write_text(svg_text, encoding="utf-8")
 
 
+def _viewbox_wh(svg_text: str) -> tuple[float, float] | None:
+    m = re.search(r'viewBox\s*=\s*["\']([^"\']+)["\']', svg_text)
+    if not m:
+        return None
+    try:
+        _, _, w, h = (float(v) for v in m.group(1).replace(",", " ").split())
+        return (w, h) if w > 0 and h > 0 else None
+    except ValueError:
+        return None
+
+
 def write_png_transparent(svg_text: str, path: Path, width: int | None = None) -> None:
     """Rasterize to PNG, proportional height, alpha preserved. Defaults to the
-    1080px logical width at @EXPORT_SCALE density (e.g. 2160px at @2x)."""
+    1080px logical width at @EXPORT_SCALE density (e.g. 2160px at @2x). The width
+    is reduced if needed so a very tall logo's proportional height stays within
+    cairo's surface limit (a 4×2000 mark would otherwise demand a 1,080,000px
+    surface and crash)."""
     out_w = width if width is not None else PNG_WIDTH * EXPORT_SCALE
+    wh = _viewbox_wh(svg_text)
+    if wh:
+        w, h = wh
+        out_w = min(out_w, max(1, int(_MAX_RASTER_PX * w / h)))   # cap implied height
     cairosvg.svg2png(bytestring=svg_text.encode("utf-8"),
-                     write_to=str(path), output_width=out_w)
+                     write_to=str(path), output_width=max(1, int(out_w)))
 
 
 def write_jpg(svg_text: str, path: Path,

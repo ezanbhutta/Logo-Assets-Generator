@@ -9,8 +9,10 @@ export default function SvgPreview({ workingSvg, viewbox, logoBox, iconBox, acti
   const start = useRef(null);
 
   const [minX, minY, maxX, maxY] = viewbox;
-  const vbW = maxX - minX;
-  const vbH = maxY - minY;
+  // Guard a degenerate viewBox (w or h == 0) so the aspect ratio and the
+  // pixel→user-space math never divide by zero.
+  const vbW = maxX - minX || 1;
+  const vbH = maxY - minY || 1;
 
   const toUserSpace = useCallback(
     (px, py) => {

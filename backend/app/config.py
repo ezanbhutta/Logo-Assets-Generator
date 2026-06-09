@@ -1,5 +1,6 @@
 """Engine-wide constants. The fixture (§10) and locked spec (§5.2) drive these."""
 import os
+import re
 
 # --- Canvas -----------------------------------------------------------------
 # FIXED 1920x1080 artboard on every with-background format (locked standard).
@@ -45,9 +46,29 @@ def variant_filename(stem: str, index: int, ext: str) -> str:
     return f"{stem} {index:02d}.{ext}"
 
 
+# Path separators, parent refs, and characters illegal in filenames on common
+# OSes — plus Unicode bidi controls (U+202A-202E etc.) that can spoof how a
+# filename renders. The brand becomes a folder name AND the `.ai`/`.eps`/zip
+# stem, so it must be a single safe component — never let it escape the temp dir.
+_UNSAFE_NAME = re.compile(
+    r'[<>:"/\\|?*\x00-\x1f\x7f‎‏‪-‮⁦-⁩﻿]')
+
+
+def safe_brand(brand: str | None) -> str:
+    """Sanitize a CSR-supplied brand for use as a filename/folder component.
+
+    Strips path separators, ``..``, and reserved characters; collapses runs of
+    whitespace; trims leading/trailing dots and spaces; caps length. Falls back
+    to ``Logo`` when nothing safe remains. (Defends against path traversal like
+    ``../../etc`` and zip-slip — §2 stateless temp-dir isolation.)"""
+    b = _UNSAFE_NAME.sub(" ", (brand or "")).replace("..", " ")
+    b = re.sub(r"\s+", " ", b).strip(" .")
+    return (b or "Logo")[:80]
+
+
 def root_folder_name(brand: str) -> str:
-    """`[Brand Name] Files` (§5.1)."""
-    return f"{brand} Files"
+    """`[Brand Name] Files` (§5.1), with the brand sanitized to a safe component."""
+    return f"{safe_brand(brand)} Files"
 
 
 # SVG namespaces used throughout.

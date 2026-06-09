@@ -293,6 +293,7 @@ def _overlap_warning(model: WorkingSVG, icon: list[str], wordmark: list[str]) ->
 # icon apart, and ignore color swatches / stray duplicates. Everything here is a
 # *suggestion* — the CSR reviews and adjusts the editable boxes; nothing ships
 # on auto-detection alone.
+SEG_MAX_NODES = 2000         # above this, skip auto-segment (O(n²)); manual still works
 SEG_GAP_K = 1.5              # cluster gap as a multiple of the median element size
 SEG_REACH_K = 3.0            # how far an aligned piece can sit and still be lockup
 _MIN_SWATCH_FRAC = 0.06      # a color chip's min side, as a fraction of min(viewbox)
@@ -332,8 +333,8 @@ def auto_segment(model: WorkingSVG) -> Suggestion | None:
     wordmark), leaving the normal optional-icon flow untouched.
     """
     nodes = [n for n in model.ink_nodes if n.bbox]
-    if len(nodes) < 2:
-        return None
+    if len(nodes) < 2 or len(nodes) > SEG_MAX_NODES:
+        return None                                  # too few, or too many to cluster cheaply
     vb = model.viewbox
     if not vb:
         return None

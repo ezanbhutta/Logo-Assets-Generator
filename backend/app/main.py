@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
+from .config import safe_brand
 from .ingest import IngestError
 from .models import (ArtboardInfo, GenerateRequestBody, HealthResponse,
                      IngestResponse)
@@ -150,7 +151,7 @@ def generate_endpoint(body: GenerateRequestBody):
             "message": "Generation hit an unexpected error on this logo. "
                        "It has been logged — please share the .ai so it can be fixed."})
 
-    filename = f"{req.brand} Files.zip"
+    filename = f"{safe_brand(req.brand)} Files.zip"
     # Delete the whole job dir once the zip has been streamed (stateless — §2).
     cleanup = BackgroundTask(shutil.rmtree, job, ignore_errors=True)
     return FileResponse(result.zip_path, media_type="application/zip",

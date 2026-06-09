@@ -7,12 +7,14 @@ import shutil
 import zipfile
 from pathlib import Path
 
-from .config import root_folder_name
+from .config import root_folder_name, safe_brand
 
 
 class PackageBuilder:
     def __init__(self, brand: str, workdir: Path):
-        self.brand = brand
+        # Sanitize once: brand is used for the root folder AND the pass-through
+        # `.ai`/`.eps` filenames, so it must be a safe single path component.
+        self.brand = safe_brand(brand)
         self.root = workdir / root_folder_name(brand)
         self.jpg = self.root / "JPEG"   # client-facing term (JPEG == JPG)
         self.pdf = self.root / "PDF"
