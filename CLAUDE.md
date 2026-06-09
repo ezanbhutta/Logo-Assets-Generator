@@ -99,7 +99,21 @@ darker brand color, brand-B = more vivid; for a 1-color logo brand-B → black.
   two boxes; nothing ships on auto-detection alone. Returns `None` (normal flow)
   for a plain single wordmark.
 - **pdf2svg quirks:** colors come as `rgb(%, %, %)` (normalize before luminance,
-  else crashes); coords scale pt→px (~0.75). Each artboard = a PDF page.
+  else crashes); coords scale pt→px (~0.75). Each artboard = a PDF page. **Text is
+  emitted as hundreds of `<use>` of glyph outlines in `<defs>`** — invisible to
+  selection/geometry yet still painted, so a brand sheet's headings/body copy
+  leak into every export. `svgutil.flatten_uses` (run in `WorkingSVG.__init__`)
+  inlines every `<use>` into a positioned copy, turning that text into normal
+  tagged paths that can be measured, selected, and pruned like the rest.
+- **Presentation panels** (`selection._panel_ids`): a brand sheet lays each logo
+  variation on a repeated tile. A panel = a large element (≥8% of the artboard)
+  that backs ≥2 marks **and** has a similar-size peer (the repetition is the
+  giveaway — a lone logo shape like a gear never has a twin, so it's never mis-
+  flagged). Panels are dropped from the logo so a box over a tile yields the
+  lockup, not the tile rectangle. The **icon box is independent of the logo box**
+  — it may mark a sub-region of the lockup or a standalone mark on its own tile
+  (an icon derived from the wordmark), and the icon files come from exactly what
+  it covers.
 - **Multi-artboard:** convert every page; the CSR **must pick the primary logo**
   when >1. De-dup treatment-variants of one mark by geometry; suggest the most
   complete full-color lockup.

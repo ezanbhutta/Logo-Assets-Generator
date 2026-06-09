@@ -25,14 +25,23 @@ _WORD_HINTS = ("logotype", "wordmark", "word", "text", "type", "name")
 
 @dataclass
 class Selection:
-    icon: list[str]        # lpids in the icon group
-    wordmark: list[str]    # lpids in the wordmark group (remainder)
-    source: str            # 'box' | 'named-layers'
+    icon: list[str]        # the icon set (may be a standalone mark, sitting outside the logo)
+    logo: list[str]        # the logo lockup region — what the logo files render
+    source: str            # 'box' | 'named-layers' | 'auto'
     overlap_warning: bool = False  # icon & wordmark bboxes overlap heavily (§9 integrated lockup)
 
     @property
     def full(self) -> list[str]:
-        return self.icon + self.wordmark
+        """The logo set (the lockup). The icon is delivered separately and may be
+        a standalone mark that is not part of this set."""
+        return self.logo
+
+    @property
+    def wordmark(self) -> list[str]:
+        """The logo minus the icon — the parts that go white in the split
+        treatment. Equals the whole logo when the icon is a standalone mark."""
+        ic = set(self.icon)
+        return [i for i in self.logo if i not in ic]
 
 
 # --- box selection -----------------------------------------------------------
@@ -48,7 +57,7 @@ def select_by_box(model: WorkingSVG, box: tuple[float, float, float, float]) -> 
             icon.append(n.lpid)
         else:
             wordmark.append(n.lpid)
-    return Selection(icon=icon, wordmark=wordmark, source="box",
+    return Selection(icon=icon, logo=icon + wordmark, source="box",
                      overlap_warning=_overlap_warning(model, icon, wordmark))
 
 
@@ -90,7 +99,7 @@ def detect_named_layers(model: WorkingSVG) -> Selection | None:
     all_ids = [n.lpid for n in model.ink_nodes]
     icon_set = set(icon_ids)
     wordmark = [i for i in all_ids if i not in icon_set]
-    return Selection(icon=icon_ids, wordmark=wordmark, source="named-layers",
+    return Selection(icon=icon_ids, logo=all_ids, source="named-layers",
                      overlap_warning=_overlap_warning(model, icon_ids, wordmark))
 
 
@@ -141,12 +150,14 @@ def auto_icon(model: WorkingSVG) -> Selection:
     """Guess the icon vs wordmark with no box. The icon set is never empty."""
     nodes = [n for n in model.ink_nodes if n.bbox]
     if len(nodes) < 2:
-        return Selection(icon=[n.lpid for n in nodes], wordmark=[], source="auto")
+        ids = [n.lpid for n in nodes]
+        return Selection(icon=ids, logo=ids, source="auto")
     icon_group, _word, _sep = _largest_gap_split(model, nodes)
     icon = [n.lpid for n in icon_group]
     icon_set = set(icon)
-    wordmark = [n.lpid for n in model.ink_nodes if n.lpid not in icon_set]
-    return Selection(icon=icon, wordmark=wordmark, source="auto",
+    all_ids = [n.lpid for n in model.ink_nodes]
+    wordmark = [i for i in all_ids if i not in icon_set]
+    return Selection(icon=icon, logo=all_ids, source="auto",
                      overlap_warning=_overlap_warning(model, icon, wordmark))
 
 
@@ -190,17 +201,25 @@ def select(model: WorkingSVG,
     the logo region, so the logo set is generated from just that.
     """
     ink = model.ink_nodes
-    logo_ids = [n.lpid for n in ink
+    # Drop presentation panels — repeated large rectangles that merely back the
+    # artwork (the cream/dark tiles on a brand sheet). They are scaffolding, not
+    # logo ink, so a logo box drawn over a tile yields the lockup, not the tile.
+    panels = _panel_ids(ink, model.viewbox)
+    pool = [n for n in ink if n.lpid not in panels] or ink
+    logo_ids = [n.lpid for n in pool
                 if logo_box is None or _in_box(n.centroid, logo_box)]
     if not logo_ids:                       # box missed everything -> whole artwork
-        logo_ids = [n.lpid for n in ink]
+        logo_ids = [n.lpid for n in pool]
     logo_set = set(logo_ids)
 
     icon_ids: list[str] = []
     source = "none"
     if icon_box is not None:
-        icon_ids = [n.lpid for n in ink
-                    if n.lpid in logo_set and _in_box(n.centroid, icon_box)]
+        # The icon box is independent of the logo box: it may mark a sub-region
+        # of the lockup OR a standalone mark elsewhere on the sheet (an icon
+        # derived from the wordmark, shown on its own tile). Either way the icon
+        # files come from exactly what the box covers.
+        icon_ids = [n.lpid for n in pool if _in_box(n.centroid, icon_box)]
         source = "box"
         if not icon_ids:                   # box missed -> named/auto within the logo
             icon_ids, source = _icon_fallback(model, logo_set)
@@ -210,7 +229,7 @@ def select(model: WorkingSVG,
             icon_ids, source = cand, "named-layers"
 
     wordmark = [i for i in logo_ids if i not in set(icon_ids)]
-    sel = Selection(icon=icon_ids, wordmark=wordmark, source=source,
+    sel = Selection(icon=icon_ids, logo=logo_ids, source=source,
                     overlap_warning=_overlap_warning(model, icon_ids, wordmark))
     return sel, bool(icon_ids)
 
@@ -255,6 +274,7 @@ def _overlap_warning(model: WorkingSVG, icon: list[str], wordmark: list[str]) ->
 SEG_GAP_K = 1.5              # cluster gap as a multiple of the median element size
 SEG_REACH_K = 3.0            # how far an aligned piece can sit and still be lockup
 _MIN_SWATCH_FRAC = 0.06      # a color chip's min side, as a fraction of min(viewbox)
+PANEL_MIN_FRAC = 0.08        # a panel's area, as a fraction of the whole artboard
 
 
 @dataclass
@@ -299,8 +319,10 @@ def auto_segment(model: WorkingSVG) -> Suggestion | None:
     if minside <= 0:
         return None
 
-    swatch_ids = _detect_swatches(nodes, minside)
-    body = [n for n in nodes if n.lpid not in swatch_ids]
+    # Exclude scaffolding before clustering: color swatches (palette chips) and
+    # presentation panels (the repeated tiles a brand sheet lays the logo on).
+    drop = _detect_swatches(nodes, minside) | _panel_ids(nodes, vb)
+    body = [n for n in nodes if n.lpid not in drop]
     if len(body) < 1:
         return None
 
@@ -312,41 +334,60 @@ def auto_segment(model: WorkingSVG) -> Suggestion | None:
     if med <= 0:                                     # degenerate zero-size geometry
         return None
     clusters = _spatial_clusters(body, SEG_GAP_K * med)
-    clusters.sort(key=lambda c: (len(c), _cluster_area(c)), reverse=True)
 
-    # Assemble the lockup: start from the richest cluster (the wordmark spine —
-    # most nodes) and pull in every nearby, aligned piece (a symbol that split
-    # off the wordmark, a stacked emblem). Pieces that sit far away on their own
-    # baseline (a duplicate icon, a stray mark on a brand sheet) stay out.
-    main = clusters[0]
+    # The primary lockup is the cluster with the strongest WORDMARK — a row of
+    # several similar-height marks (the brand name). Picking by wordmark, not raw
+    # node count or area, ignores a big standalone icon and a block of body copy
+    # (which has many but tiny glyphs). Ties (a brand sheet repeats the lockup in
+    # several colorways) break toward the top-most, left-most one — reading order.
+    top = max((_wordmark_score(c) for c in clusters), default=0.0)
+    if top > 0:
+        main = min((c for c in clusters if _wordmark_score(c) >= top - 1e-6),
+                   key=lambda c: (_bbox_of(c)[1], _bbox_of(c)[0]))
+    else:
+        main = max(clusters, key=lambda c: (len(c), _cluster_area(c)))
+
+    # Assemble the lockup: pull in every nearby, aligned piece (a symbol that
+    # split off the wordmark, a stacked emblem). Far-off pieces on their own
+    # baseline (a standalone icon, a recolored duplicate) stay out, and fine
+    # print / body copy under the wordmark (much shorter than it) is never a
+    # lockup member — that's what swallowed the whole brand-sheet before.
     lock_clusters = [main]
     used = {id(main)}
     reach = SEG_REACH_K * med
+    min_h = 0.5 * _median_height(main)
     changed = True
     while changed:
         changed = False
         lb = _bbox_of([n for c in lock_clusters for n in c])
         for c in clusters:
-            if id(c) in used:
+            if id(c) in used or _median_height(c) < min_h:
                 continue
             if _box_gap(lb, _bbox_of(c)) <= reach and _aligned(lb, _bbox_of(c)):
                 lock_clusters.append(c)
                 used.add(id(c))
                 changed = True
     lockup = [n for c in lock_clusters for n in c]
-    extra_pieces = sum(len(c) for c in clusters if id(c) not in used)
-    excluded = extra_pieces + len(swatch_ids)
+    excluded = len(nodes) - len(lockup)              # panels, swatches, text, dups
 
-    carved = len(lockup) < len(nodes)                # dropped swatches/extras?
+    carved = len(lockup) < len(nodes)
     logo_box = _box_xywh(_bbox_of(lockup)) if carved else None
 
+    # The icon: first try inside the lockup (a symbol set apart from the
+    # wordmark). If the lockup is wordmark-only, look for a STANDALONE icon — a
+    # compact, square-ish mark on its own elsewhere on the sheet (the brand's
+    # letter-mark shown by itself, e.g. a "t." beside a "tays" wordmark).
     icon_group = _lockup_icon(model, lockup, lock_clusters)
-    icon_box = (_box_xywh(model.overall_bbox([n.lpid for n in icon_group]))
-                if icon_group else None)
+    if icon_group:
+        icon_box = _box_xywh(model.overall_bbox([n.lpid for n in icon_group]))
+    else:
+        lb = _bbox_of(lockup)
+        max_side = 1.5 * max(lb[2] - lb[0], lb[3] - lb[1])
+        icon_box = _standalone_icon(model, clusters, used, _median_height(main), max_side)
 
     if logo_box is None and icon_box is None:
         return None
-    note = _segment_note(carved, len(swatch_ids), extra_pieces, icon_box is not None)
+    note = _segment_note(carved, excluded, icon_box is not None)
     return Suggestion(logo_box=logo_box, icon_box=icon_box, note=note, excluded=excluded)
 
 
@@ -358,18 +399,89 @@ def _aligned(a, b) -> bool:
 
 
 def _lockup_icon(model: WorkingSVG, lockup: list, lock_clusters: list):
-    """Find the icon inside the assembled lockup. If the lockup is several
-    pieces, the most-square piece is the icon; if it's one fused cluster, split
-    it at the largest gap. Returns the icon nodes, or None if none is convincing."""
+    """Find an emblem inside the assembled lockup. If the lockup is several
+    pieces, the most-square piece is the icon. If it's one fused row, the icon is
+    a compact, SQUARE, full-height mark set apart at one end (a leaf before a
+    wordmark) — never a slice of the letters. Returns the icon nodes, or None."""
     if len(lock_clusters) >= 2:
         icon = max(lock_clusters, key=lambda c: _squareness(model, c))
         word = [n for c in lock_clusters if c is not icon for n in c]
         if word and _is_plausible_icon(model, lockup, icon, word, float("inf")):
             return icon
-    icon_group, word_group, separation = _largest_gap_split(model, lockup)
-    if _is_plausible_icon(model, lockup, icon_group, word_group, separation):
-        return icon_group
+        return None
+
+    pts = sorted([n for n in lockup if n.bbox], key=lambda n: n.centroid[0])
+    if len(pts) < 3:
+        return None
+    for from_left in (True, False):
+        grp = _end_emblem(pts, from_left)
+        rest = [n for n in pts if n not in grp]
+        if not rest:
+            continue
+        gb = _bbox_of(grp)
+        sq = min(gb[2] - gb[0], gb[3] - gb[1]) / max(gb[2] - gb[0], gb[3] - gb[1], 1e-6)
+        letter_h = _median_height(rest)
+        emblem_h = gb[3] - gb[1]
+        # square, at least as tall as the wordmark (rules out a sparkle/period),
+        # and parted from the letters by clearly more than the inter-letter gap.
+        if sq < 0.7 or emblem_h < 0.6 * letter_h:
+            continue
+        gaps = _adjacent_x_gaps(rest)
+        med_gap = sorted(gaps)[len(gaps) // 2] if gaps else 0.0
+        part = (rest[0].bbox[0] - gb[2]) if from_left else (gb[0] - rest[-1].bbox[2])
+        if med_gap > 0 and part < 1.3 * med_gap:
+            continue
+        if _is_plausible_icon(model, lockup, grp, rest, part / max(med_gap, 1e-6)):
+            return grp
     return None
+
+
+def _end_emblem(pts: list, from_left: bool) -> list:
+    """Grow a group inward from one end of an x-sorted row while the parts keep
+    overlapping in x — i.e. the stacked pieces of a single emblem — then stop at
+    the first gap (the start of the wordmark)."""
+    seq = pts if from_left else list(reversed(pts))
+    grp = [seq[0]]
+    lo, hi = seq[0].bbox[0], seq[0].bbox[2]
+    for n in seq[1:]:
+        if n.bbox[0] <= hi and n.bbox[2] >= lo:
+            grp.append(n)
+            lo, hi = min(lo, n.bbox[0]), max(hi, n.bbox[2])
+        else:
+            break
+    return grp
+
+
+def _adjacent_x_gaps(pts: list) -> list:
+    """Edge-to-edge horizontal gaps between consecutive marks (not centroid
+    distances) — the real whitespace between letters, so an emblem parted from
+    the wordmark reads as a wider gap than the kerning between letters."""
+    s = sorted((n for n in pts if n.bbox), key=lambda n: n.bbox[0])
+    return [max(0.0, s[i + 1].bbox[0] - s[i].bbox[2]) for i in range(len(s) - 1)]
+
+
+def _standalone_icon(model: WorkingSVG, clusters: list, used: set,
+                     main_h: float, max_side: float):
+    """Among the leftover clusters, find a standalone icon: a compact, square-ish
+    mark on its own (not a text row, not fine print, not a bar, not a giant
+    panel). Returns its box, or None. This covers the brand-sheet case where the
+    icon is the brand's letter-mark shown by itself, apart from the wordmark."""
+    best = None  # (squareness, cluster)
+    for c in clusters:
+        if id(c) in used or _wordmark_score(c) > 0:   # the lockup, a dup wordmark, body copy
+            continue
+        if _median_height(c) < 0.6 * main_h:           # fine print
+            continue
+        bb = _bbox_of(c)
+        w, h = bb[2] - bb[0], bb[3] - bb[1]
+        if max(w, h) > max_side:                        # bigger than the logo -> a tile, not an icon
+            continue
+        sq = min(w, h) / max(w, h, 1e-6)
+        if sq < 0.45:                                  # a bar / underline, not an icon
+            continue
+        if best is None or sq > best[0]:
+            best = (sq, c)
+    return _box_xywh(_bbox_of(best[1])) if best else None
 
 
 def _detect_swatches(nodes: list, minside: float) -> set[str]:
@@ -391,6 +503,51 @@ def _detect_swatches(nodes: list, minside: float) -> set[str]:
         for grp in (row, col):
             if len(grp) >= 3 and len(grp) > len(best):
                 best = {n.lpid for n in grp}
+    return best
+
+
+def _panel_ids(nodes: list, viewbox) -> set[str]:
+    """Find presentation **panels** — the repeated tiles a brand sheet lays each
+    logo variation on. A panel is a large element that (a) backs ≥2 other marks
+    (their centroids sit on it) and (b) has a similar-size large peer elsewhere.
+
+    The peer requirement is the safety catch: a *single* logo never duplicates
+    its own backing shape, so a lone large shape (e.g. Orova's gear carrying its
+    circuitry) is never mistaken for scaffolding — only repeated tiles are."""
+    if not viewbox:
+        return set()
+    vb_area = (viewbox[2] - viewbox[0]) * (viewbox[3] - viewbox[1])
+    if vb_area <= 0:
+        return set()
+    large = [n for n in nodes if n.bbox and n.area >= PANEL_MIN_FRAC * vb_area]
+    panels: set[str] = set()
+    for n in large:
+        backs = sum(1 for m in nodes if m is not n and m.bbox
+                    and n.bbox[0] <= m.centroid[0] <= n.bbox[2]
+                    and n.bbox[1] <= m.centroid[1] <= n.bbox[3])
+        if backs < 2:
+            continue
+        if any(m is not n and 0.77 <= n.area / max(m.area, 1e-6) <= 1.3 for m in large):
+            panels.add(n.lpid)
+    return panels
+
+
+def _wordmark_score(cluster: list) -> float:
+    """Prominence of the strongest horizontal TEXT ROW in a cluster — the median
+    height of a baseline-aligned run of ≥3 similar-height marks (the brand name).
+    Scoring by height, not count, means the main wordmark beats tiny body copy
+    (short) and a tall standalone icon scores 0 (only 1–2 marks, no run). Used to
+    pick the primary lockup among everything on a brand sheet."""
+    pts = [n for n in cluster if n.bbox]
+    best = 0.0
+    for a in pts:
+        ah = a.bbox[3] - a.bbox[1]
+        band = [m for m in pts
+                if abs(m.centroid[1] - a.centroid[1]) <= 0.6 * max(ah, 1e-6)
+                and 0.4 <= (m.bbox[3] - m.bbox[1]) / max(ah, 1e-6) <= 2.5]
+        if len(band) >= 3:
+            heights = sorted(m.bbox[3] - m.bbox[1] for m in band)
+            best = max(best, heights[len(heights) // 2])
     return best
 
 
@@ -437,16 +594,12 @@ def _is_plausible_icon(model: WorkingSVG, lockup: list, icon_group: list,
     return sq >= 0.75 or (sq >= 0.5 and separation >= 1.6)
 
 
-def _segment_note(carved: bool, n_swatch: int, n_extra: int, has_icon: bool) -> str:
+def _segment_note(carved: bool, excluded: int, has_icon: bool) -> str:
     parts: list[str] = []
-    if carved:
-        ex = []
-        if n_swatch:
-            ex.append(f"{n_swatch} color swatch" + ("es" if n_swatch != 1 else ""))
-        if n_extra:
-            ex.append(f"{n_extra} extra element" + ("s" if n_extra != 1 else ""))
-        parts.append("Carved the logo out of the artboard"
-                     + (f" — excluded {' and '.join(ex)}." if ex else "."))
+    if carved and excluded:
+        parts.append(
+            f"Carved the logo out of the artboard — excluded {excluded} other "
+            f"element{'s' if excluded != 1 else ''} (tiles, swatches, text, duplicates).")
     if has_icon:
         parts.append("Marked a likely icon inside the logo.")
     parts.append("Adjust the boxes if needed.")
@@ -480,3 +633,8 @@ def _cluster_area(nodes: list) -> float:
 def _node_squareness(n) -> float:
     w, h = n.bbox[2] - n.bbox[0], n.bbox[3] - n.bbox[1]
     return min(w, h) / max(w, h, 1e-6)
+
+
+def _median_height(nodes: list) -> float:
+    hs = sorted(n.bbox[3] - n.bbox[1] for n in nodes if n.bbox)
+    return hs[len(hs) // 2] if hs else 0.0

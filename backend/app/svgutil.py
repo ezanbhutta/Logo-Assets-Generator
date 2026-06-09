@@ -7,10 +7,13 @@ from the lxml tree + any ``<style>`` class rules.
 """
 from __future__ import annotations
 
+import copy
 import re
 from lxml import etree
 
 from .config import SVG_NS
+
+XLINK_HREF = "{http://www.w3.org/1999/xlink}href"
 
 # Drawable leaf shapes we recolor / select. Containers (g, svg, defs) excluded.
 LEAF_TAGS = {
@@ -47,6 +50,61 @@ def local_name(el: etree._Element) -> str:
 def qn(tag: str) -> str:
     """Qualified SVG tag name for element creation."""
     return f"{{{SVG_NS}}}{tag}"
+
+
+def flatten_uses(root: etree._Element, max_passes: int = 6) -> etree._Element:
+    """Inline every ``<use>`` into the drawable tree.
+
+    pdf2svg renders text as hundreds of ``<use xlink:href="#glyph-…" x= y=>``
+    that reference glyph outlines kept in ``<defs>``. Left as references those
+    glyphs are invisible to selection/geometry yet still paint (the reference
+    survives pruning), so a brand sheet's headings and body copy leak into every
+    exported variant. Replacing each ``<use>`` with a positioned copy of its
+    target turns that text into normal tagged paths — now measurable, selectable,
+    and prunable like the rest of the artwork."""
+    for _ in range(max_passes):
+        uses = [e for e in root.iter() if local_name(e) == "use"]
+        if not uses:
+            break
+        id_map = {e.get("id"): e for e in root.iter() if e.get("id")}
+        for use in uses:
+            parent = use.getparent()
+            if parent is None:
+                continue
+            href = (use.get(XLINK_HREF) or use.get("href") or "").lstrip("#")
+            target = id_map.get(href)
+            idx = parent.index(use)
+            parent.remove(use)
+            if target is None or target is use:
+                continue
+            g = etree.Element(qn("g"))
+            tf = use.get("transform", "").strip()
+            x, y = use.get("x"), use.get("y")
+            if x or y:
+                tf = (f"{tf} translate({x or 0},{y or 0})").strip()
+            if tf:
+                g.set("transform", tf)
+            for attr in ("fill", "stroke", "style", "class", "clip-path", "opacity"):
+                v = use.get(attr)
+                if v is not None:
+                    g.set(attr, v)
+            if local_name(target) in ("symbol", "svg"):
+                for ch in target:
+                    g.append(_clone_no_id(ch))
+            else:
+                g.append(_clone_no_id(target))
+            parent.insert(idx, g)
+    return root
+
+
+def _clone_no_id(el: etree._Element) -> etree._Element:
+    """Deep-copy an element, dropping ``id`` attributes so inlining a referenced
+    glyph many times never produces duplicate ids."""
+    dup = copy.deepcopy(el)
+    for e in dup.iter():
+        if isinstance(e.tag, str) and e.get("id") is not None:
+            del e.attrib["id"]
+    return dup
 
 
 def iter_leaves(root: etree._Element):

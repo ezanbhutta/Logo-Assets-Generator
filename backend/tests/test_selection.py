@@ -178,6 +178,45 @@ def test_auto_segment_single_lockup_marks_icon_no_carve():
     assert len(sel.icon) == 1 and len(sel.wordmark) == 4
 
 
+def test_use_text_is_flattened_and_excludable():
+    """pdf2svg renders text as <use> of glyph defs. Those must be inlined so the
+    text is tracked geometry that a logo box can exclude — otherwise a brand
+    sheet's body copy leaks into every export (the Tays bug)."""
+    from app.svg_model import WorkingSVG
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" '
+           'xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 400 200">'
+           '<defs><path id="g" d="M0,0 H8 V10 H0 Z"/></defs>'
+           '<rect x="20" y="20" width="40" height="40" fill="#7229ff"/>'   # the logo
+           '<use xlink:href="#g" x="20" y="160"/>'                         # body text (bottom)
+           '<use xlink:href="#g" x="40" y="160"/>'
+           '<use xlink:href="#g" x="60" y="160"/></svg>')
+    m = WorkingSVG.from_string(svg)
+    assert "<use" not in m.serialize()              # flattened away
+    assert len(m.ink_nodes) == 4                     # square + 3 inlined glyph paths
+    sel, _ = selection.select(m, logo_box=(10, 10, 60, 60), icon_box=None)
+    assert len(sel.full) == 1                        # only the square; the text is excluded
+
+
+def test_repeated_tiles_are_excluded_as_panels():
+    """A brand sheet lays the logo on repeated tiles. Those panels are scaffolding
+    — a logo box over a tile must yield the lockup, never the tile rectangle."""
+    from app.svg_model import WorkingSVG
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600">'
+           '<rect x="40" y="40" width="400" height="300" fill="#f0ece0"/>'     # tile A
+           '<rect x="540" y="40" width="400" height="300" fill="#f0ece0"/>'    # tile B (peer)
+           '<rect x="120" y="150" width="60" height="60" fill="#7229ff"/>'     # icon on A
+           '<rect x="200" y="165" width="30" height="30" fill="#160a33"/>'     # wordmark on A
+           '<rect x="260" y="165" width="30" height="30" fill="#160a33"/>'
+           '<rect x="620" y="150" width="60" height="60" fill="#7229ff"/>'        # dup icon on B
+           '<rect x="700" y="165" width="28" height="30" fill="#160a33"/></svg>')  # + its mark
+    m = WorkingSVG.from_string(svg)
+    panels = selection._panel_ids(m.ink_nodes, m.viewbox)
+    assert len(panels) == 2                           # both tiles flagged
+    sel, _ = selection.select(m, logo_box=(100, 140, 200, 80), icon_box=None)
+    assert all(p not in sel.full for p in panels)     # no tile rectangle in the logo
+    assert len(sel.full) == 3                          # icon + 2 wordmark marks
+
+
 def test_auto_segment_plain_wordmark_suggests_nothing():
     """Evenly-spaced letters with no emblem: never carve a letter out as a fake
     icon — return None and leave the normal flow alone."""

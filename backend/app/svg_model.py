@@ -51,9 +51,9 @@ class WorkingSVG:
     """Parsed working SVG: lxml tree for edits + geometry from svgelements."""
 
     def __init__(self, root: etree._Element):
-        self.root = root
-        self.class_map = svgutil.parse_style_classes(root)
-        self.parents = svgutil.build_parent_map(root)
+        self.root = svgutil.flatten_uses(root)   # inline <use> text -> tagged paths
+        self.class_map = svgutil.parse_style_classes(self.root)
+        self.parents = svgutil.build_parent_map(self.root)
         self._tag_leaves()
         self.nodes: list[PathNode] = self._build_nodes()
         self._mark_background()
