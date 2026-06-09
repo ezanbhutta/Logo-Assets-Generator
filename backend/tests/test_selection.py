@@ -123,3 +123,68 @@ def test_resolve_auto_when_no_named_layers():
 def test_resolve_uses_valid_box(solid_model):
     sel = selection.resolve(solid_model, (10, 5, 150, 150))
     assert sel.source == "box" and len(sel.icon) == 1
+
+
+# --- intelligent auto-segmentation ------------------------------------------
+def _bento_svg():
+    """A brand sheet: a logo lockup (emblem + 5 wordmark letters) top-left, a
+    standalone duplicate icon top-right, and a 4-chip color palette at the
+    bottom. A pro should carve the lockup out and mark the emblem."""
+    from app.svg_model import WorkingSVG
+    parts = ['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600">']
+    parts.append('<circle cx="90" cy="110" r="40" fill="#7229ff"/>')        # emblem
+    for i, x in enumerate(range(170, 291, 30)):                              # wordmark (5)
+        parts.append(f'<rect x="{x}" y="95" width="24" height="30" fill="#160a33"/>')
+    parts.append('<circle cx="700" cy="110" r="40" fill="#7229ff"/>')       # standalone dup
+    for x in (60, 180, 300, 420):                                           # color swatches
+        parts.append(f'<rect x="{x}" y="460" width="80" height="80" fill="#160a33"/>')
+    parts.append('</svg>')
+    return WorkingSVG.from_string("".join(parts))
+
+
+def test_auto_segment_carves_bento_and_marks_icon():
+    m = _bento_svg()
+    assert len(m.ink_nodes) == 11
+    seg = selection.auto_segment(m)
+    assert seg is not None
+    assert seg.logo_box is not None and seg.icon_box is not None
+    assert seg.excluded == 5                      # 4 swatches + 1 standalone dup
+    # The suggested boxes, fed back through select(), isolate the lockup + emblem.
+    sel, include_icon = selection.select(m, logo_box=tuple(seg.logo_box),
+                                         icon_box=tuple(seg.icon_box))
+    assert include_icon is True
+    assert len(sel.full) == 6                     # emblem + 5 letters, no swatches/dup
+    assert len(sel.icon) == 1                     # the emblem
+    assert len(sel.wordmark) == 5
+
+
+def test_auto_segment_single_lockup_marks_icon_no_carve():
+    """A plain icon+wordmark lockup (no bento): nothing to carve, but the emblem
+    is set apart so it's pre-marked as the icon (the 'check them separately'
+    case)."""
+    from app.svg_model import WorkingSVG
+    parts = ['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 160">']
+    parts.append('<circle cx="40" cy="80" r="30" fill="#7229ff"/>')         # emblem
+    for x in (90, 114, 138, 162):                                           # wordmark
+        parts.append(f'<rect x="{x}" y="60" width="18" height="40" fill="#160a33"/>')
+    parts.append('</svg>')
+    m = WorkingSVG.from_string("".join(parts))
+    seg = selection.auto_segment(m)
+    assert seg is not None
+    assert seg.logo_box is None                   # nothing extra to exclude
+    assert seg.icon_box is not None
+    sel, include_icon = selection.select(m, logo_box=None, icon_box=tuple(seg.icon_box))
+    assert include_icon is True
+    assert len(sel.icon) == 1 and len(sel.wordmark) == 4
+
+
+def test_auto_segment_plain_wordmark_suggests_nothing():
+    """Evenly-spaced letters with no emblem: never carve a letter out as a fake
+    icon — return None and leave the normal flow alone."""
+    from app.svg_model import WorkingSVG
+    parts = ['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 80">']
+    for x in (20, 50, 80, 110, 140):
+        parts.append(f'<rect x="{x}" y="20" width="18" height="40" fill="#160a33"/>')
+    parts.append('</svg>')
+    m = WorkingSVG.from_string("".join(parts))
+    assert selection.auto_segment(m) is None

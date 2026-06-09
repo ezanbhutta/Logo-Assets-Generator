@@ -42,6 +42,7 @@ class ArtboardSummary:
     is_gradient: bool
     ink_count: int
     named_selection: dict | None
+    suggestion: dict | None = None         # auto-detected logo/icon boxes (editable)
     geom_sig: tuple = ()                   # geometry-only signature (de-dup key)
 
     @property
@@ -78,6 +79,7 @@ def run_ingest(source: Path, workdir: Path) -> IngestSummary:
         (workdir / f"working_{i}.svg").write_text(model.serialize(), encoding="utf-8")
         report = colors.detect(model)
         named = selection.detect_named_layers(model)
+        seg = selection.auto_segment(model)
         vb = model.viewbox or (0.0, 0.0, 0.0, 0.0)
         geom_sig = tuple(sorted(
             tuple(round(c) for c in n.bbox) for n in model.ink_nodes if n.bbox))
@@ -97,6 +99,7 @@ def run_ingest(source: Path, workdir: Path) -> IngestSummary:
             named_selection=(
                 {"icon": named.icon, "source": named.source,
                  "overlap_warning": named.overlap_warning} if named else None),
+            suggestion=seg.as_dict() if seg else None,
             geom_sig=geom_sig,
         ))
 

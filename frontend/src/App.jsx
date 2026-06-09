@@ -15,6 +15,7 @@ export default function App() {
   const [iconBox, setIconBox] = useState(null);  // icon region
   const [removed, setRemoved] = useState([]);
   const [mark, setMark] = useState("icon"); // 'logo' | 'icon' | 'named' — active tool
+  const [suggestion, setSuggestion] = useState(null); // auto-detected boxes + note
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [manual, setManual] = useState(null); // {reasons} when active board is out of scope
@@ -45,15 +46,25 @@ export default function App() {
 
   function pickArtboard(r, index) {
     setChosen(index);
-    setLogoBox(null);
-    setIconBox(null);
     setRemoved([]);
     setManual(null);
+    setSuggestion(null);
+    let lb = null, ib = null;
     if (index != null) {
       const b = r.artboards.find((x) => x.index === index);
-      setMark(b.named_selection ? "named" : "icon");
+      const s = b.suggestion;
+      if (s) {
+        // Pre-fill the auto-detected logo/icon regions — editable suggestions.
+        lb = s.logo_box;
+        ib = s.icon_box;
+        setSuggestion(s);
+      }
+      // Named layers win as the icon source unless we detected a sharper box.
+      setMark(b.named_selection && !(s && s.icon_box) ? "named" : "icon");
       if (!b.supported) setManual({ reasons: b.reasons });
     }
+    setLogoBox(lb);
+    setIconBox(ib);
   }
 
   async function handleGenerate() {
@@ -87,6 +98,7 @@ export default function App() {
     setIconBox(null);
     setRemoved([]);
     setManual(null);
+    setSuggestion(null);
     setDone(false);
     setError(null);
   }
@@ -154,6 +166,19 @@ export default function App() {
               clearLogo={() => setLogoBox(null)}
               clearIcon={() => setIconBox(null)}
             />
+            {suggestion && (logoBox || iconBox) && (
+              <div className="mb-2 flex items-start justify-between gap-3 rounded-lg border border-pulse-200 bg-pulse-50 px-3 py-2 text-xs text-pulse-700">
+                <span>
+                  <span className="font-semibold">Auto-detected.</span> {suggestion.note}
+                </span>
+                <button
+                  onClick={() => { setLogoBox(null); setIconBox(null); setSuggestion(null); }}
+                  className="shrink-0 text-pulse-400 underline hover:text-pulse-600"
+                >
+                  clear
+                </button>
+              </div>
+            )}
             <p className="mb-2 text-xs text-slate-500">
               {mark === "logo"
                 ? "Drag a box around the actual logo — use this for a brand-sheet / bento; everything outside is ignored."

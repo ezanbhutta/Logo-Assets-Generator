@@ -17,6 +17,7 @@ class ArtboardInfo(BaseModel):
     brand_a: str
     brand_b: str
     named_selection: dict | None = None
+    suggestion: dict | None = None   # auto-detected {logo_box, icon_box, note, excluded}
 
 
 class IngestResponse(BaseModel):

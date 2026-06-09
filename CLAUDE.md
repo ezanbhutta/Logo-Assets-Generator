@@ -85,6 +85,19 @@ darker brand color, brand-B = more vivid; for a 1-color logo brand-B → black.
 - **Icon auto-extraction** (`selection.auto_icon`) when a box misses: split the
   lockup at its largest gap on the best axis (handles stacked lockups like an
   emblem over a wide wordmark) and take the more square cluster as the icon.
+- **Auto-segmentation** (`selection.auto_segment`, on ingest): read the artboard
+  like a designer and **pre-fill editable logo + icon boxes**. Cluster ink by
+  spatial proximity (gap ∝ median element size, so it transfers from a tight
+  cropped lockup to a sprawling brand sheet); detect color **swatches** (≥3
+  aligned, similar-size, square-ish chips) and exclude them; **assemble the
+  lockup** = richest cluster + nearby *aligned* pieces (rescues a symbol that
+  split off the wordmark), while far-off duplicates/strays stay out; mark the
+  icon = the set-apart square sub-region (only when convincing — never carves a
+  letter out of plain text). Handles the **bento/brand-sheet** case (logo +
+  standalone icon + swatches + variations on one artboard) and the *icon-derived-
+  from-wordmark* case. It is a **suggestion only** — the CSR reviews/adjusts the
+  two boxes; nothing ships on auto-detection alone. Returns `None` (normal flow)
+  for a plain single wordmark.
 - **pdf2svg quirks:** colors come as `rgb(%, %, %)` (normalize before luminance,
   else crashes); coords scale pt→px (~0.75). Each artboard = a PDF page.
 - **Multi-artboard:** convert every page; the CSR **must pick the primary logo**
