@@ -39,6 +39,15 @@ NEAR_BLACK_LUMINANCE = 0.06
 ICON_STEM = "Icon"
 LOGO_STEM = "Logo"
 
+# --- AI segmentation (vision-in-the-loop) -----------------------------------
+# When ANTHROPIC_API_KEY is set, the "Auto-detect" button renders the artboard
+# and asks Claude to read it like a designer and propose the logo/icon boxes;
+# the geometric selection.auto_segment is the offline fallback. The model is
+# overridable; it defaults to the most capable Opus. LOGO_AI_MAX_PX caps the
+# rendered preview's width (keeps the request light without losing legibility).
+AI_SEGMENT_MODEL = os.environ.get("LOGO_AI_MODEL", "claude-opus-4-8")
+AI_SEGMENT_MAX_PX = int(os.environ.get("LOGO_AI_MAX_PX", "1400"))
+
 
 def variant_filename(stem: str, index: int, ext: str) -> str:
     """`Icon 01.jpg` ... `Logo 05.svg` — zero-padded two digits, space before

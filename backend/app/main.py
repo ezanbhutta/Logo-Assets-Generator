@@ -15,11 +15,13 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
+from . import selection, vision
 from .config import safe_brand
 from .ingest import IngestError
 from .models import (ArtboardInfo, GenerateRequestBody, HealthResponse,
-                     IngestResponse)
+                     IngestResponse, SegmentRequestBody, SegmentResponse)
 from .pipeline import (GenerateRequest, ManualFlag, run_generate, run_ingest)
+from .svg_model import WorkingSVG
 
 WORK_ROOT = Path(os.environ.get("LOGO_WORK_ROOT", "/tmp/logo_jobs"))
 WORK_ROOT.mkdir(parents=True, exist_ok=True)
@@ -104,6 +106,39 @@ async def ingest_endpoint(
                                    if k in ArtboardInfo.model_fields})
                    for b in summary.artboards],
     )
+
+
+@app.post("/segment", response_model=SegmentResponse)
+def segment_endpoint(body: SegmentRequestBody) -> SegmentResponse:
+    """Propose editable logo/icon boxes for the chosen artboard. Asks Claude to
+    read the artboard (vision) when an API key is configured; otherwise — or on
+    any AI failure — falls back to the geometric ``auto_segment``. A suggestion
+    only: the CSR reviews and adjusts before anything ships."""
+    job = _job_dir(body.job_id)
+    board = job / f"working_{body.artboard}.svg"
+    if not board.is_file():
+        raise HTTPException(status_code=400, detail="invalid artboard")
+    working_svg = board.read_text(encoding="utf-8")
+    model = WorkingSVG.from_string(working_svg)
+    vb = model.viewbox or (0.0, 0.0, 0.0, 0.0)
+
+    sugg, source = None, "none"
+    try:
+        sugg = vision.ai_segment(working_svg, vb)
+        if sugg is not None:
+            source = "ai"
+    except Exception:
+        logging.getLogger("uvicorn.error").exception(
+            "segment: AI path failed for job %s", body.job_id)
+    if sugg is None:                       # no key, AI failure, or nothing found
+        sugg = selection.auto_segment(model)
+        source = "geometry" if sugg is not None else "none"
+
+    if sugg is None:
+        return SegmentResponse(note="Nothing to auto-detect — draw the boxes by hand.")
+    d = sugg.as_dict()
+    return SegmentResponse(logo_box=d["logo_box"], icon_box=d["icon_box"],
+                           note=d["note"], source=source)
 
 
 @app.post("/generate")

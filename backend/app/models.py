@@ -45,6 +45,19 @@ class GenerateRequestBody(BaseModel):
     brand_b: str | None = None
 
 
+class SegmentRequestBody(BaseModel):
+    job_id: str
+    artboard: int = 0                # which artboard/page to read
+
+
+class SegmentResponse(BaseModel):
+    # logo/icon boxes in SVG user space [x, y, w, h] (null -> whole artwork / no icon).
+    logo_box: list[float] | None = None
+    icon_box: list[float] | None = None
+    note: str = ""
+    source: str = "none"             # 'ai' | 'geometry' | 'none'
+
+
 class HealthResponse(BaseModel):
     status: str
     toolchain: dict[str, bool]

@@ -5,7 +5,7 @@ import ColorConfirm from "./components/ColorConfirm.jsx";
 import ArtboardChooser from "./components/ArtboardChooser.jsx";
 import TopBar from "./components/TopBar.jsx";
 import Steps from "./components/Steps.jsx";
-import { ingest, generate, downloadBlob } from "./api.js";
+import { ingest, generate, segment, downloadBlob } from "./api.js";
 
 export default function App() {
   const [result, setResult] = useState(null);
@@ -15,8 +15,10 @@ export default function App() {
   const [iconBox, setIconBox] = useState(null);  // icon region
   const [removed, setRemoved] = useState([]);
   const [mark, setMark] = useState("icon"); // 'logo' | 'icon' | 'named' — active tool
-  const [suggestion, setSuggestion] = useState(null); // auto-detected boxes + note (on demand)
-  const [usedSuggestion, setUsedSuggestion] = useState(false); // did the CSR apply it?
+  const [suggestion, setSuggestion] = useState(null); // geometric fallback boxes (from ingest)
+  const [usedSuggestion, setUsedSuggestion] = useState(false); // did the CSR run auto-detect?
+  const [detecting, setDetecting] = useState(false);  // AI auto-detect in flight
+  const [detectNote, setDetectNote] = useState("");   // explanation of what was detected
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [manual, setManual] = useState(null); // {reasons} when active board is out of scope
@@ -51,22 +53,37 @@ export default function App() {
     setManual(null);
     setSuggestion(null);
     setUsedSuggestion(false);
+    setDetectNote("");
     setLogoBox(null);   // start blank — the CSR draws, or presses Auto-detect
     setIconBox(null);
     if (index != null) {
       const b = r.artboards.find((x) => x.index === index);
-      if (b.suggestion) setSuggestion(b.suggestion);  // available on demand only
+      if (b.suggestion) setSuggestion(b.suggestion);  // geometric fallback for Auto-detect
       setMark(b.named_selection ? "named" : "icon");
       if (!b.supported) setManual({ reasons: b.reasons });
     }
   }
 
-  // Fill the logo/icon boxes from the engine's suggestion when the CSR asks.
-  function applySuggestion() {
-    if (!suggestion) return;
-    setLogoBox(suggestion.logo_box || null);
-    setIconBox(suggestion.icon_box || null);
-    setMark(suggestion.icon_box ? "icon" : "logo");
+  // Auto-detect: ask the backend to read the artboard (Claude vision when a key
+  // is configured; geometric fallback otherwise) and fill the editable boxes.
+  async function applySuggestion() {
+    if (detecting || chosen == null) return;
+    setDetecting(true);
+    let s = await segment({ job_id: result.job_id, artboard: chosen });
+    setDetecting(false);
+    // Fall back to the geometric suggestion embedded at ingest if the call failed.
+    if (!s || (!s.logo_box && !s.icon_box)) {
+      s = suggestion
+        ? { ...suggestion, source: "geometry" }
+        : s || { logo_box: null, icon_box: null, note: "", source: "none" };
+    }
+    setLogoBox(s.logo_box || null);
+    setIconBox(s.icon_box || null);
+    if (s.icon_box) setMark("icon");
+    else if (s.logo_box) setMark("logo");
+    setDetectNote(
+      s.note || (s.logo_box || s.icon_box ? "" : "Nothing to auto-detect — draw the boxes by hand.")
+    );
     setUsedSuggestion(true);
   }
 
@@ -103,6 +120,8 @@ export default function App() {
     setManual(null);
     setSuggestion(null);
     setUsedSuggestion(false);
+    setDetecting(false);
+    setDetectNote("");
     setDone(false);
     setError(null);
   }
@@ -170,27 +189,46 @@ export default function App() {
               clearLogo={() => setLogoBox(null)}
               clearIcon={() => setIconBox(null)}
             />
-            {suggestion && !usedSuggestion && !logoBox && !iconBox && (
+            {!usedSuggestion && !logoBox && !iconBox && (
               <button
                 onClick={applySuggestion}
-                className="mb-2 inline-flex items-center gap-1.5 rounded-lg border border-pulse-200 bg-pulse-50 px-3 py-1.5 text-xs font-medium text-pulse-700 hover:bg-pulse-100"
+                disabled={detecting}
+                className="mb-2 inline-flex items-center gap-1.5 rounded-lg border border-pulse-200 bg-pulse-50 px-3 py-1.5 text-xs font-medium text-pulse-700 hover:bg-pulse-100 disabled:opacity-60"
               >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M13 2L4.5 13.5H11l-1 8.5 9-12H12l1-8z" />
-                </svg>
-                Auto-detect logo &amp; icon
+                {detecting ? (
+                  <svg width="13" height="13" viewBox="0 0 24 24" className="animate-spin" fill="none">
+                    <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25" />
+                    <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                  </svg>
+                ) : (
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M13 2L4.5 13.5H11l-1 8.5 9-12H12l1-8z" />
+                  </svg>
+                )}
+                {detecting ? "Reading the artboard…" : "Auto-detect logo & icon"}
               </button>
             )}
             {usedSuggestion && (logoBox || iconBox) && (
               <div className="mb-2 flex items-start justify-between gap-3 rounded-lg border border-pulse-200 bg-pulse-50 px-3 py-2 text-xs text-pulse-700">
                 <span>
-                  <span className="font-semibold">Auto-detected.</span> {suggestion.note}
+                  <span className="font-semibold">Auto-detected.</span> {detectNote}
                 </span>
                 <button
-                  onClick={() => { setLogoBox(null); setIconBox(null); setUsedSuggestion(false); }}
+                  onClick={() => { setLogoBox(null); setIconBox(null); setUsedSuggestion(false); setDetectNote(""); }}
                   className="shrink-0 text-pulse-400 underline hover:text-pulse-600"
                 >
                   clear
+                </button>
+              </div>
+            )}
+            {usedSuggestion && !logoBox && !iconBox && (
+              <div className="mb-2 flex items-start justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                <span>{detectNote || "Nothing to auto-detect — draw the boxes by hand."}</span>
+                <button
+                  onClick={() => { setUsedSuggestion(false); setDetectNote(""); }}
+                  className="shrink-0 text-slate-400 underline hover:text-slate-600"
+                >
+                  dismiss
                 </button>
               </div>
             )}

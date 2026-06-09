@@ -121,6 +121,26 @@ darker brand color, brand-B = more vivid; for a 1-color logo brand-B → black.
   vivid. Exclude neutrals by **saturation** (so dark-but-chromatic navy stays a
   brand color; near-black/gray artifacts don't).
 
+## AI segmentation (vision-in-the-loop — `backend/app/vision.py`)
+The geometric `selection.auto_segment` heuristics approximate a designer's eye
+but are brittle (every odd file finds a gap between the rules). The **Auto-detect**
+button now calls `POST /segment`, which renders the chosen artboard and asks
+**Claude (vision, `claude-opus-4-8`)** to read it like a designer and return the
+editable **logo_box / icon_box** (normalized fractions → mapped to SVG user
+space). It is a **suggestion only** — the CSR still reviews/adjusts; nothing
+ships on detection alone.
+- **Opt-in + graceful:** active only when `ANTHROPIC_API_KEY` is set. Any failure
+  (no key, SDK missing, network, bad JSON) returns `None` and `/segment` falls
+  back to `selection.auto_segment` (`source: "ai" | "geometry" | "none"`). Fully
+  backward-compatible — nothing changes until the key is configured.
+- **Env:** `ANTHROPIC_API_KEY` (enables it), `LOGO_AI_MODEL` (default
+  `claude-opus-4-8`), `LOGO_AI_MAX_PX` (rendered preview width, default 1400).
+- The model does **perception/grouping** (what's the lockup, the icon, the
+  scaffolding); the engine still does the **geometry** — the returned boxes feed
+  the same `selection.select` two-box flow (panel-strip, `_attach_punct`, etc.).
+- **Privacy:** with a key set, the rendered artboard is sent to the Anthropic API
+  (not used for training). The geometric path keeps everything local.
+
 ## Design system (CSR-Pulse / HaseebMadeIt)
 Match `csr-pulse-vbsz.vercel.app`.
 - **Primary purple `#7229ff`** (`pulse-500`), **ink `#160a33`**, page bg

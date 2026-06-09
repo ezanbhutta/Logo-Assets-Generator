@@ -35,6 +35,23 @@ export async function generate(body) {
   return res.blob();
 }
 
+// Ask the backend to propose logo/icon boxes for an artboard (AI when a key is
+// configured, geometric fallback otherwise). Returns {logo_box, icon_box, note,
+// source}; never throws — returns null so the caller can fall back.
+export async function segment(body) {
+  try {
+    const res = await fetch("/segment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
 async function safeDetail(res) {
   try {
     const j = await res.json();
