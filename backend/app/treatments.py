@@ -1,10 +1,14 @@
 """Treatment engine (§7.5, §7.6): turn the working SVG + a recipe into a
-variant SVG, either with-background (1920×1080) or transparent (edge-to-edge).
+variant SVG, either with-background (logo 1920×1080, icon 1080×1080 square)
+or transparent (edge-to-edge).
 
 Each variant is built by:
   1. pruning a deep copy of the working tree to the selected paths,
-  2. recoloring those paths per the recipe,
-  3. placing them — centered/scaled on the canvas, or cropped to a tight bbox.
+  2. recoloring those paths per the recipe — the ADAPTIVE contrast guard keeps
+     every color that reads on the background and swaps each one that doesn't
+     to an in-scheme substitute (the logo's own palette first, then white/black),
+  3. placing them — proportionally scaled to 60% of the canvas and centered,
+     or cropped to a tight bbox.
 """
 from __future__ import annotations
 
@@ -17,9 +21,10 @@ from lxml import etree
 from PIL import Image
 
 from . import config
-from .config import (CANVAS_W, CANVAS_H, SAFE_FRACTION, ICON_FRACTION,
-                    SVG_NS, XLINK_NS, LPID_ATTR)
-from .colors import normalize_hex, contrast_ratio, best_knockout
+from .config import (SAFE_FRACTION, canvas_for, SVG_NS, XLINK_NS, LPID_ATTR)
+from .colors import (normalize_hex, contrast_ratio, best_knockout,
+                     best_substitute, designer_knockout, gradient_ref, mix_hex,
+                     saturation)
 from .gradients import GradientSpec, parse_gradient, build_canvas_gradient
 from .recipes import Treatment
 from .selection import Selection
@@ -34,6 +39,7 @@ class TreatmentContext:
     report: "object"            # colors.ColorReport (avoid import cycle in hints)
     grad_spec: GradientSpec | None
     _vis_bbox: dict = field(default_factory=dict)   # mark -> visible bbox cache
+    _grad_avg: dict = field(default_factory=dict)   # lpid -> avg gradient tone cache
 
 
 def build_context(model: WorkingSVG, selection: Selection, report) -> TreatmentContext:
@@ -115,6 +121,23 @@ def _copy_pruned(ctx: TreatmentContext, include: set[str]) -> etree._Element:
 # Below this fg/bg contrast ratio an element is effectively invisible -> knock
 # it out to a visible color (e.g. a single-color logo on its own brand bg).
 MIN_CONTRAST = 2.2
+# Neutral-on-neutral pairs (gray on charcoal) get no help from hue, so they
+# need real luminance contrast; chromatic pairs (orange on brown, red on navy)
+# read at lower ratios because hue separates them.
+_NEUTRAL_PAIR_CONTRAST = 3.0
+_CHROMATIC_SAT = 0.15
+
+
+def _reads_on(fg: str, bg: str) -> bool:
+    """Does `fg` read on `bg` to a designer's eye? Chromatic pairs pass at
+    MIN_CONTRAST (hue does part of the work); a pair with no real hue between
+    them must clear the stricter neutral bar."""
+    c = contrast_ratio(fg, bg)
+    if c >= _NEUTRAL_PAIR_CONTRAST:
+        return True
+    if c < MIN_CONTRAST:
+        return False
+    return max(saturation(fg), saturation(bg)) >= _CHROMATIC_SAT
 
 _LEAVES = {"path", "rect", "circle", "ellipse", "polygon", "polyline", "line"}
 
@@ -164,20 +187,58 @@ def _effective_fg(treatment: Treatment, mark: str, lpid: str, node,
     return normalize_hex(node.fill) if node else None
 
 
+def _gradient_avg(ctx: TreatmentContext, node) -> str | None:
+    """A gradient fill's representative solid — the average of its stops. Lets
+    the guard judge whether a gradient-filled element reads on a background the
+    way a designer eyeballs its overall tone. Cached per element."""
+    if node is None:
+        return None
+    if node.lpid in ctx._grad_avg:
+        return ctx._grad_avg[node.lpid]
+    avg = None
+    gid = gradient_ref(node.fill)
+    if gid:
+        defs = ctx.model.gradient_defs()
+        grad = defs.get(gid)
+        if grad is not None:
+            stops = [hx for _, c, _ in parse_gradient(grad, defs).stops
+                     if (hx := normalize_hex(c))]
+            if stops:
+                avg = stops[0]
+                for i, s in enumerate(stops[1:], start=2):
+                    avg = mix_hex(avg, s, 1.0 / i)             # running mean
+    ctx._grad_avg[node.lpid] = avg
+    return avg
+
+
+def _palette(ctx: TreatmentContext) -> list[str]:
+    """The logo's own colors — the only substitution candidates the adaptive
+    recolor may use (plus the white/black designer fallback)."""
+    return [hx for c in getattr(ctx.report, "solids", []) if (hx := normalize_hex(c))]
+
+
 def _ensure_contrast(ctx: TreatmentContext, vroot: etree._Element,
                      treatment: Treatment, mark: str, bg: tuple[str, object]) -> None:
-    """Flip any element that would blend into its BACKDROP to white/black —
-    whichever reads. The backdrop is what's actually behind the element: a
-    larger element drawn beneath it (e.g. an icon's gear), or the canvas
-    background. Layer-aware so:
-      * detail sitting on a colored/gradient shape is kept (white circuit on a
-        purple gear stays white, not knocked to black vs the white canvas),
-      * mono treatments don't merge detail into the shape — the detail flips so
-        the pattern stays visible.
-    A single-color mark on its own brand background still knocks out (no shape
-    beneath it -> backdrop is the canvas)."""
+    """Make every element read against its BACKDROP — what's actually behind it:
+    a larger element drawn beneath (e.g. an icon's gear), or the canvas. This is
+    the adaptive recolor: on a brand background the artwork keeps every color
+    that reads, and a designer-grade substitute fixes each one that doesn't.
+
+      * **full treatments** — a failing color is swapped to the most similar
+        color from the logo's OWN palette that reads (in-scheme first: a brown
+        mascot outline on the brown brand bg becomes the mascot's cream), else
+        white/black with the designer preference for white on saturated brand
+        colors. Gradient-filled elements are judged by their average stop tone
+        on non-white backdrops — a vivid gradient stays itself on black; one
+        that vanishes is swapped to a readable solid.
+      * **mono (white/black) treatments** — nested detail flips white<->black so
+        the pattern stays visible; never to a palette color (mono stays mono).
+      * Layer-aware throughout: white detail on a purple gear is judged against
+        the gear, not the canvas, so it survives the white background."""
     bg_kind, bg_value = bg
     canvas = normalize_hex(bg_value) if bg_kind == "solid" else "gradient"
+    adaptive = treatment.recolor == "full"
+    palette = _palette(ctx) if adaptive else []
 
     icon = set(ctx.selection.icon)
     leaves = [el for el in vroot.iter() if local_name(el) in _LEAVES]
@@ -187,21 +248,46 @@ def _ensure_contrast(ctx: TreatmentContext, vroot: etree._Element,
 
     for i, el in enumerate(leaves):
         node, fg = nodes[i], fgs[i]
-        if fg is None or not node or not node.bbox:
-            continue                              # keeps a gradient -> colorful, leave it
-        cx, cy = node.centroid
+        if not node or not node.bbox:
+            continue
         backdrop = canvas
-        # the topmost LARGER element drawn beneath this one that covers its center
+        # The topmost LARGER element drawn beneath this one that FULLY contains
+        # it (small tolerance). Full containment — not centroid-in-bbox — so a
+        # mark that merely brushes a shape (a mascot's ears poking past its
+        # body) is judged against the canvas it actually sits on.
+        nb = node.bbox
+        eps = 0.06 * max(nb[2] - nb[0], nb[3] - nb[1], 1e-6)
         for j in range(i):
             bn = nodes[j]
             if (bn and bn.bbox and bn.area > node.area
-                    and bn.bbox[0] <= cx <= bn.bbox[2]
-                    and bn.bbox[1] <= cy <= bn.bbox[3]):
-                backdrop = "gradient" if fgs[j] is None else fgs[j]
+                    and bn.bbox[0] <= nb[0] + eps and bn.bbox[1] <= nb[1] + eps
+                    and bn.bbox[2] >= nb[2] - eps and bn.bbox[3] >= nb[3] - eps):
+                if fgs[j] is not None:
+                    backdrop = fgs[j]
+                else:
+                    avg = _gradient_avg(ctx, bn)
+                    backdrop = avg if avg else "gradient"
         if backdrop in (None, "gradient"):
-            continue                              # gradient/unknown backdrop -> white/black reads
-        if contrast_ratio(fg, backdrop) < MIN_CONTRAST:
-            knock = best_knockout(backdrop)
+            continue                              # unknown backdrop -> white/black reads
+
+        if fg is None:
+            # Gradient-filled element kept by a full treatment: judge its average
+            # tone. On white (the canonical full-color slot) it is always kept.
+            if not adaptive or backdrop == config.WHITE:
+                continue
+            avg = _gradient_avg(ctx, node)
+            if avg is None or _reads_on(avg, backdrop):
+                continue
+            sub = best_substitute(avg, backdrop, palette)
+            _apply(el, sub, node)
+            fgs[i] = sub
+            continue
+
+        if not _reads_on(fg, backdrop):
+            if adaptive:
+                knock = best_substitute(fg, backdrop, palette)
+            else:
+                knock = best_knockout(backdrop)    # mono stays mono
             _apply(el, knock, node)
             fgs[i] = knock                         # so elements above see the new color
 
@@ -266,7 +352,7 @@ def _fmt(v: float) -> str:
 def _render_with_bg(ctx: TreatmentContext, vroot: etree._Element, art: BBox,
                     mark: str, bg: tuple[str, object]) -> str:
     head, content = _split_head_content(vroot)
-    W, H = CANVAS_W, CANVAS_H
+    W, H = canvas_for(mark)
     out = _new_svg(W, H, f"0 0 {W} {H}")
 
     defs = etree.SubElement(out, qn("defs"))
@@ -298,17 +384,13 @@ def _render_with_bg(ctx: TreatmentContext, vroot: etree._Element, art: BBox,
 
 
 def _placement_scale(art: BBox, mark: str) -> float:
-    """Scale to center the mark on the fixed 1920x1080 canvas.
-
-    * **logo** — fit within SAFE_FRACTION of each canvas dimension (§5.2).
-    * **icon** — normalize the longest side to ICON_FRACTION of the shorter
-      canvas dimension (the bare mark has an arbitrary native size).
-    """
+    """Uniform scale (proportional — never stretched or skewed) so the mark's
+    binding side spans exactly SAFE_FRACTION (60%) of its artboard: 1920x1080
+    for the logo, 1080x1080 for the icon. Centered = balanced."""
+    W, H = canvas_for(mark)
     ax0, ay0, ax1, ay1 = art
     aw, ah = max(ax1 - ax0, 1e-6), max(ay1 - ay0, 1e-6)
-    if mark == "icon":
-        return ICON_FRACTION * min(CANVAS_W, CANVAS_H) / max(aw, ah)
-    return min(SAFE_FRACTION * CANVAS_W / aw, SAFE_FRACTION * CANVAS_H / ah)
+    return min(SAFE_FRACTION * W / aw, SAFE_FRACTION * H / ah)
 
 
 def _render_transparent(ctx: TreatmentContext, vroot: etree._Element, art: BBox) -> str:
@@ -343,7 +425,8 @@ def render_variant(ctx: TreatmentContext, mark: str, treatment: Treatment,
     _recolor(ctx, vroot, treatment, mark, bg)
     art = _visible_bbox(ctx, mark, include)
     if art is None:
-        art = ctx.model.viewbox or (0.0, 0.0, float(CANVAS_W), float(CANVAS_H))
+        cw, ch = canvas_for(mark)
+        art = ctx.model.viewbox or (0.0, 0.0, float(cw), float(ch))
     if with_background:
         return _render_with_bg(ctx, vroot, art, mark, bg)
     return _render_transparent(ctx, vroot, art)

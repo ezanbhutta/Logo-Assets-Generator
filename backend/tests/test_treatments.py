@@ -30,8 +30,10 @@ def test_solid_logo_backgrounds(solid_model):
         assert near(bg, expect[t.index]), f"Logo {t.index} bg {bg}"
 
 
-def test_split_keeps_icon_color_whitens_wordmark(solid_model):
-    """§6.2/02 — on navy, icon stays red, wordmark turns white."""
+def test_adaptive_on_brand_a_keeps_red_lifts_navy_to_white(solid_model):
+    """§6.2/02 adaptive — on the navy brand background, the red icon READS so it
+    stays red; the navy wordmark vanishes so it lifts to white (no in-palette
+    candidate clears the substitute bar). The classic designer brand-bg cut."""
     ctx, _ = _ctx(solid_model)
     img = render(treatments.render_variant(ctx, "logo", SOLID_LOGO[1], True)).convert("RGB")
     reds = whites = 0
@@ -87,8 +89,9 @@ def test_single_color_logo_stays_visible_on_brand_bg():
     ctx = treatments.build_context(m, sel, rep)
     # Icon 02 = brand-A (purple) background, icon "in its own color"
     img = render(treatments.render_variant(ctx, "icon", SOLID_ICON[1], True)).convert("RGB")
+    W, H = img.size
     bg = img.getpixel((20, 20))
-    ink = sum(1 for x in range(0, CANVAS_W, 8) for y in range(0, CANVAS_H, 8)
+    ink = sum(1 for x in range(0, W, 8) for y in range(0, H, 8)
               if not near(img.getpixel((x, y)), bg, tol=28))
     assert ink > 0, "single-color icon disappeared on its own brand background"
 
@@ -133,8 +136,9 @@ def test_clipped_shape_survives_subset_pruning():
     ctx = treatments.build_context(m, sel, colors.detect(m))
     out = treatments.render_variant(ctx, "icon", SOLID_ICON[0], True)
     img = render(out).convert("RGB")
+    W, H = img.size
     bg = img.getpixel((5, 5))
-    ink = sum(1 for x in range(0, CANVAS_W, 12) for y in range(0, CANVAS_H, 12)
+    ink = sum(1 for x in range(0, W, 12) for y in range(0, H, 12)
               if not near(img.getpixel((x, y)), bg, 30))
     assert ink > 0, "clipped shape vanished — clipPath was pruned"
 
@@ -194,11 +198,77 @@ def test_transparent_svg_is_zero_origin_and_edge_to_edge(solid_model):
     assert bb[0] <= 2 and bb[1] <= 2 and bb[2] >= W - 2 and bb[3] >= H - 2
 
 
-def test_placement_within_safe_margins(solid_model):
-    """Artwork longest side <= ~65% of the canvas (§5.2)."""
+def test_logo_placement_60pct_of_1920x1080(solid_model):
+    """LOCKED: logo artboard 1920x1080; the mark's binding side spans exactly
+    60% of the canvas, proportional, centered."""
     ctx, _ = _ctx(solid_model)
-    img = render(treatments.render_variant(ctx, "logo", SOLID_LOGO[0], True)).convert("RGB")
-    xs = [x for x in range(CANVAS_W) if not near(img.getpixel((x, MID)), (255, 255, 255))]
-    assert xs, "expected ink on the mid line"
+    svg = treatments.render_variant(ctx, "logo", SOLID_LOGO[0], True)
+    assert 'viewBox="0 0 1920 1080"' in svg
+    img = render(svg).convert("RGB")
+    ink = [(x, y) for x in range(0, CANVAS_W, 2) for y in range(0, CANVAS_H, 2)
+           if not near(img.getpixel((x, y)), (255, 255, 255))]
+    assert ink, "expected ink on the canvas"
+    xs, ys = [p[0] for p in ink], [p[1] for p in ink]
     width_frac = (max(xs) - min(xs)) / CANVAS_W
-    assert width_frac <= 0.66
+    # the fire lockup is wide, so width binds: ink spans ~60% of the canvas width
+    assert 0.57 <= width_frac <= 0.61
+    # centered (balanced): equal margins on both axes within a small tolerance
+    assert abs((min(xs) + max(xs)) / 2 - CANVAS_W / 2) <= 8
+    assert abs((min(ys) + max(ys)) / 2 - CANVAS_H / 2) <= 8
+
+
+def test_icon_artboard_is_1080_square_at_60pct(solid_model):
+    """LOCKED: icon artboard 1080x1080 SQUARE; the icon scales proportionally
+    (no stretch/skew) so its longest side spans 60% of the artboard, centered."""
+    ctx, _ = _ctx(solid_model)
+    svg = treatments.render_variant(ctx, "icon", SOLID_ICON[0], True)
+    assert 'viewBox="0 0 1080 1080"' in svg and 'width="1080"' in svg and 'height="1080"' in svg
+    img = render(svg).convert("RGB")
+    assert img.size == (1080, 1080)
+    # measure the ink bbox on the white background
+    ink = [(x, y) for x in range(0, 1080, 2) for y in range(0, 1080, 2)
+           if not near(img.getpixel((x, y)), (255, 255, 255))]
+    assert ink
+    xs, ys = [p[0] for p in ink], [p[1] for p in ink]
+    w, h = max(xs) - min(xs), max(ys) - min(ys)
+    # longest side ~60% of 1080 = 648 (sampling stride costs a couple px)
+    assert 0.57 <= max(w, h) / 1080 <= 0.61
+    # proportional: the flame's aspect ratio matches its source aspect (no skew)
+    fx0, fy0, fx1, fy1 = ctx.model.overall_bbox(ctx.selection.icon)
+    src_aspect = (fx1 - fx0) / (fy1 - fy0)
+    assert abs((w / h) - src_aspect) / src_aspect <= 0.08
+    # centered (balanced) on the square canvas
+    assert abs((min(xs) + max(xs)) / 2 - 540) <= 8
+    assert abs((min(ys) + max(ys)) / 2 - 540) <= 8
+
+
+def test_adaptive_substitutes_in_palette_not_white():
+    """A pro-designer recolor stays in the logo's OWN scheme: a mascot's brown
+    parts on the brown brand background become the mascot's cream (the most
+    similar palette color that reads) — never an out-of-scheme stark white; the
+    orange that already reads is KEPT."""
+    brown, cream, orange = "#5b3a1e", "#f4e9d8", "#e07020"
+    svg = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200">'
+           f'<rect x="60" y="40" width="120" height="120" fill="{brown}"/>'    # body
+           f'<circle cx="120" cy="120" r="30" fill="{cream}"/>'                # belly ON body
+           f'<path d="M220,60 L300,60 L260,140 Z" fill="{orange}"/></svg>')    # beak beside
+    m = WorkingSVG.from_string(svg)
+    rep = colors.detect(m)
+    assert rep.brand_a == brown                       # darkest chromatic
+    sel = selection.select_by_box(m, (50, 30, 150, 140))
+    ctx = treatments.build_context(m, sel, rep)
+    out = treatments.render_variant(ctx, "logo", SOLID_LOGO[1], True)  # brand-A bg
+    assert cream in out                               # brown body -> in-scheme cream
+    assert orange in out                              # readable orange kept, not knocked out
+    assert "#ffffff" not in out                       # no out-of-scheme white introduced
+
+
+def test_gradient_kept_on_black_when_it_reads(gradient_model):
+    """§6.4/03 adaptive — a vivid gradient mark GLOWS on black, so it keeps its
+    gradient there (in-scheme); only the unreadable navy wordmark lifts to
+    white. No more blanket all-white on black."""
+    sel = selection.select_by_box(gradient_model, ICON_BOX)
+    rep = colors.detect(gradient_model)
+    ctx = treatments.build_context(gradient_model, sel, rep)
+    svg = treatments.render_variant(ctx, "logo", GRADIENT_LOGO[2], True)  # black bg
+    assert "url(#flameGrad)" in svg                   # gradient survives on black

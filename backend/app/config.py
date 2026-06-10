@@ -3,23 +3,32 @@ import os
 import re
 
 # --- Canvas -----------------------------------------------------------------
-# FIXED 1920x1080 artboard on every with-background format (locked standard).
-# The logo is centered and scaled to fit; rasters export at @EXPORT_SCALE.
+# LOCKED artboards (owner standard): every with-background LOGO format is a
+# fixed 1920x1080 artboard; every with-background ICON format is a fixed
+# 1080x1080 SQUARE artboard. The mark is proportionally scaled (never stretched
+# or skewed) to fit within SAFE_FRACTION of the artboard and centered (balanced)
+# on its visible bbox. Rasters export at @EXPORT_SCALE.
 CANVAS_W = 1920
 CANVAS_H = 1080
-# Logo's longest side <= ~65% of the corresponding canvas dimension, centered.
-SAFE_FRACTION = 0.65
-# Icon variants: re-centered, longest side normalized to this fraction of the
-# shorter canvas dimension.
-ICON_FRACTION = 0.30
+ICON_CANVAS = 1080
+# The mark occupies 60% of the artboard: its binding side scales to exactly
+# 60% of the corresponding canvas dimension, the other side proportional.
+SAFE_FRACTION = 0.60
+
+
+def canvas_for(mark: str) -> tuple[int, int]:
+    """(width, height) of the with-background artboard for 'icon' | 'logo'."""
+    if mark == "icon":
+        return ICON_CANVAS, ICON_CANVAS
+    return CANVAS_W, CANVAS_H
 
 # --- Transparent raster (§5.2) ----------------------------------------------
 PNG_WIDTH = 1080  # transparent PNGs: 1080px wide (logical), height proportional.
 
 # --- Raster export quality ---------------------------------------------------
 # Rasters are exported at @Nx pixel density for crisp, high-quality output
-# (vector SVG/PDF stay resolution-independent). Default @2x: JPG 3840x2160,
-# transparent PNG 2160px wide.
+# (vector SVG/PDF stay resolution-independent). Default @2x: logo JPG 3840x2160,
+# icon JPG 2160x2160, transparent PNG 2160px wide.
 EXPORT_SCALE = int(os.environ.get("LOGO_EXPORT_SCALE", "2"))
 JPG_QUALITY = int(os.environ.get("LOGO_JPG_QUALITY", "95"))
 
@@ -43,9 +52,9 @@ LOGO_STEM = "Logo"
 # When ANTHROPIC_API_KEY is set, the "Auto-detect" button renders the artboard
 # and asks Claude to read it like a designer and propose the logo/icon boxes;
 # the geometric selection.auto_segment is the offline fallback. The model is
-# overridable; it defaults to the most capable Opus. LOGO_AI_MAX_PX caps the
-# rendered preview's width (keeps the request light without losing legibility).
-AI_SEGMENT_MODEL = os.environ.get("LOGO_AI_MODEL", "claude-opus-4-8")
+# overridable; it defaults to Fable 5, the most capable model. LOGO_AI_MAX_PX
+# caps the rendered preview's width (keeps the request light, stays legible).
+AI_SEGMENT_MODEL = os.environ.get("LOGO_AI_MODEL", "claude-fable-5")
 AI_SEGMENT_MAX_PX = int(os.environ.get("LOGO_AI_MAX_PX", "1400"))
 
 

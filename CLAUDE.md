@@ -20,9 +20,14 @@ logo delivery package as a `.zip`. Upload → zip out. No DB, no auth.
   (vector PDF). Needs native binaries → **deploy on Docker/Render, not Vercel.**
 
 ## LOCKED OUTPUT STANDARD (do not drift)
-- **Artboard = fixed 1920×1080** on every with-background format. SVG/PDF carry
-  `viewBox 0 0 1920 1080`; **JPEG exports @2× = 3840×2160**. (Not square, not
-  per-source-artboard — fixed 1920×1080.)
+- **Artboards (owner standard):** every with-background **LOGO** format = fixed
+  **1920×1080** (`viewBox 0 0 1920 1080`; JPEG @2× = 3840×2160). Every
+  with-background **ICON** format = fixed **1080×1080 SQUARE**
+  (`viewBox 0 0 1080 1080`; JPEG @2× = 2160×2160). The mark is **proportionally**
+  scaled — never stretched or skewed — so its binding side spans **60%**
+  (`SAFE_FRACTION`) of the artboard, centered (balanced) on its visible bbox.
+  JPEG dimensions derive from each variant's own artboard (`exporters.write_jpg`
+  reads the viewBox — forcing one size would skew the square icons).
 - **Folder named `JPEG`** (client-facing term; file extension stays `.jpg`).
 - **Naming:** `Icon 01 … Icon 05`, `Logo 01 … Logo 05` — **zero-padded two
   digits, space before the number.** Root folder `[Brand Name] Files`.
@@ -30,10 +35,10 @@ logo delivery package as a `.zip`. Upload → zip out. No DB, no auth.
   ```
   [Brand] Files/
   ├─ [Brand].ai · [Brand].eps        ← masters at root, ONLY the selected artboard
-  ├─ JPEG/  Icon 01–05 · Logo 01–05  (3840×2160, with background)
-  ├─ PDF/   Icon 01–05 · Logo 01–05  (vector, 1920×1080)
-  ├─ SVG/   Icon 01–05 · Logo 01–05  (vector, 1920×1080)
-  └─ Transparent/                    (edge-to-edge, no background)
+  ├─ JPEG/  Icon 01–05 (2160×2160) · Logo 01–05 (3840×2160)  (with background)
+  ├─ PDF/   Icon 01–05 (1080²) · Logo 01–05 (1920×1080)      (vector)
+  ├─ SVG/   Icon 01–05 (1080²) · Logo 01–05 (1920×1080)      (vector)
+  └─ Transparent/                    (edge-to-edge, no background — unchanged)
      ├─ PNG/  Icon 01–03 · Logo 01–04   (raster, 2160px wide @2×, alpha)
      ├─ SVG/  Icon 01–03 · Logo 01–04   (vector, tight bbox)
      └─ PDF/  Icon 01–03 · Logo 01–04   (vector, tight bbox)
@@ -53,23 +58,46 @@ logo delivery package as a `.zip`. Upload → zip out. No DB, no auth.
 
 ## Treatments (§6 recipes — `backend/app/recipes.py`)
 Background pool per slot: `[white, brand-A, brand-B, white, black]`. brand-A =
-darker brand color, brand-B = more vivid; for a 1-color logo brand-B → black.
-- **Solid Logo 01–05:** white/full · brand-A/split (icon keeps color, wordmark→white) ·
-  brand-B/all-white · white/all-black · black/all-white.
-- **Solid Icon 01–05:** white/full · brand-A/full · brand-B/white · white/black · black/white.
+darker brand color, brand-B = more vivid; for a 1-color logo brand-B = a **deep
+shade of the brand color** (`colors.shade_of`, in-scheme — not plain black). A
+**neutral-only** logo (black wordmark, no chromatic color) gets its own neutral
+scale instead: brand-A = a charcoal tint, brand-B = a light gray on which the
+mark keeps its true ink — never three identical black slots.
+- **Solid Logo & Icon 01–05:** white/full · brand-A/**adaptive** ·
+  brand-B/**adaptive** · white/all-black (mono) · black/all-white (mono).
 - **Gradient Logo/Icon:** 01 white/full · 02 **white knockout on a rebuilt
-  full-bleed gradient** (hero) · 03 black/white · 04 white/black · 05 dark-stop-solid/white.
+  full-bleed gradient** (hero) · 03 black/**adaptive** (the gradient is KEPT on
+  black when its tone reads — a vivid gradient glows there; swapped to a readable
+  solid when it would vanish) · 04 white/black · 05 dark-stop-solid/white.
 - **Transparent Logo 01–04:** full · split · white · black. **Icon 01–03:** full · white · black.
+
+### Adaptive recolor (the designer engine — `treatments._ensure_contrast`)
+"Adaptive" = recolor `full` + the layer-aware contrast guard. On any colored
+background the artwork **keeps every color that reads** (≥ ~2.2:1 against its
+actual backdrop) — never blanket-white on colored backgrounds. Each color that
+would vanish is swapped, in order of preference, to:
+1. the **most similar color from the logo's OWN palette** that genuinely reads
+   (≥ 4.5:1) — a brown mascot outline on the brown brand bg becomes the mascot's
+   cream, never an out-of-scheme color;
+2. else **white/black** — white preferred when it clears ~3:1 (the classic mark
+   on saturated brand colors); black only on genuinely light backgrounds.
+Layer-aware throughout: an element is judged against what is actually behind it
+(a larger shape beneath, by paint order — including a gradient shape's average
+tone — else the canvas), so white detail on a purple gear survives a white
+canvas, and substituted colors cascade (elements above see the new color below).
+Gradient-filled elements are judged by their **average stop tone** on non-white
+backdrops; on white (the canonical full-color slot) they are always kept. Mono
+(white/black) treatments never substitute palette colors — nested detail flips
+white↔black so the pattern stays visible; mono stays mono. This one mechanism
+handles wordmarks, combination marks, multi-color mascots, and gradient marks.
 
 ### Hard rules (where the easy implementation is wrong)
 - Operate in **vector space**; never crop a preview or pixel-sample a gradient.
 - Gradient backgrounds: **rebuild** a canvas-scale gradient from source stops +
   direction (`objectBoundingBox`, full-bleed). White knockout is fixed on any
   gradient background.
-- **Contrast guard** (`treatments._ensure_contrast`): on any solid background,
-  if an element's fg/bg contrast < ~2.2 it's knocked out to white/black —
-  whichever reads. Fixes single-color logos on their own brand color (purple-on-
-  purple). Well-contrasting 2-color logos (red on navy) are left alone.
+- Substitutions must stay **in the logo's color scheme** (its own palette, plus
+  the white/black knockouts) — the engine never invents an outside color.
 - **Out of scope → flag "manual," refuse** (no partial zip): mesh/freeform
   gradients, embedded raster `<image>`, filters/shadows, in-art transparency,
   spot colors, live (un-outlined) text, integrated lockups.
@@ -86,9 +114,9 @@ darker brand color, brand-B = more vivid; for a 1-color logo brand-B → black.
 - **Source page background rect** (pdf2svg/Illustrator add one) is detected and
   **excluded** from artwork (bbox/selection/colors/output) so the logo isn't
   tiny/off-center and colors aren't polluted. Never flag everything as bg.
-- **Placement:** logo fit within 65% of each canvas dim, centered on the
-  **visible (rendered) bbox** (robust to invisible/fill:none guides). Icon
-  re-centered, longest side ≈ 30% of the shorter canvas dim.
+- **Placement:** the mark's binding side spans 60% of its artboard (logo
+  1920×1080, icon 1080×1080), proportional, centered on the **visible
+  (rendered) bbox** (robust to invisible/fill:none guides).
 - **Icon auto-extraction** (`selection.auto_icon`) when a box misses: split the
   lockup at its largest gap on the best axis (handles stacked lockups like an
   emblem over a wide wordmark) and take the more square cluster as the icon.
@@ -138,7 +166,7 @@ darker brand color, brand-B = more vivid; for a 1-color logo brand-B → black.
 The geometric `selection.auto_segment` heuristics approximate a designer's eye
 but are brittle (every odd file finds a gap between the rules). The **Auto-detect**
 button now calls `POST /segment`, which renders the chosen artboard and asks
-**Claude (vision, `claude-opus-4-8`)** to read it like a designer and return the
+**Claude (vision, `claude-fable-5`)** to read it like a designer and return the
 editable **logo_box / icon_box** (normalized fractions → mapped to SVG user
 space). It is a **suggestion only** — the CSR still reviews/adjusts; nothing
 ships on detection alone.
@@ -147,7 +175,7 @@ ships on detection alone.
   back to `selection.auto_segment` (`source: "ai" | "geometry" | "none"`). Fully
   backward-compatible — nothing changes until the key is configured.
 - **Env:** `ANTHROPIC_API_KEY` (enables it), `LOGO_AI_MODEL` (default
-  `claude-opus-4-8`), `LOGO_AI_MAX_PX` (rendered preview width, default 1400).
+  `claude-fable-5`), `LOGO_AI_MAX_PX` (rendered preview width, default 1400).
 - The model does **perception/grouping** (what's the lockup, the icon, the
   scaffolding); the engine still does the **geometry** — the returned boxes feed
   the same `selection.select` two-box flow (panel-strip, `_attach_punct`, etc.).

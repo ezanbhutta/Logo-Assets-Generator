@@ -2,7 +2,8 @@
 
 * SVG  — write the variant SVG verbatim (vector, gradients intact).
 * PNG  — transparent set, 1080px wide, height proportional, alpha preserved.
-* JPG  — with-bg, 1920×1080, flattened to RGB.
+* JPG  — with-bg at the variant's own artboard size (logo 1920×1080, icon
+  1080×1080), flattened to RGB.
 * PDF  — vector via ``rsvg-convert -f pdf`` (cairosvg fallback); gradients kept.
 """
 from __future__ import annotations
@@ -56,13 +57,16 @@ def write_png_transparent(svg_text: str, path: Path, width: int | None = None) -
                      write_to=str(path), output_width=max(1, int(out_w)))
 
 
-def write_jpg(svg_text: str, path: Path,
-              width: int = CANVAS_W, height: int = CANVAS_H) -> None:
-    """Rasterize the with-bg SVG (1920×1080 logical) at @EXPORT_SCALE density,
-    flatten onto white, save high-quality JPG."""
+def write_jpg(svg_text: str, path: Path) -> None:
+    """Rasterize the with-bg SVG at @EXPORT_SCALE density, flatten onto white,
+    save high-quality JPG. Dimensions come from the variant's own artboard
+    (logo 1920×1080, icon 1080×1080) — forcing one fixed size here would
+    stretch/skew the square icon artboard."""
+    wh = _viewbox_wh(svg_text)
+    w, h = (wh if wh else (float(CANVAS_W), float(CANVAS_H)))
     png_bytes = cairosvg.svg2png(bytestring=svg_text.encode("utf-8"),
-                                 output_width=width * EXPORT_SCALE,
-                                 output_height=height * EXPORT_SCALE)
+                                 output_width=round(w) * EXPORT_SCALE,
+                                 output_height=round(h) * EXPORT_SCALE)
     img = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
     flat = Image.new("RGB", img.size, (255, 255, 255))
     flat.paste(img, mask=img.split()[3])

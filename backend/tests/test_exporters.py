@@ -15,8 +15,8 @@ def _ctx(model):
 
 
 def test_jpg_is_canvas_at_export_scale_rgb(solid_model, tmp_path):
-    """With-bg JPEG is the fixed 1920x1080 artboard, rasterized at @EXPORT_SCALE
-    (default @2x -> 3840x2160)."""
+    """With-bg LOGO JPEG is the fixed 1920x1080 artboard, rasterized at
+    @EXPORT_SCALE (default @2x -> 3840x2160)."""
     ctx = _ctx(solid_model)
     svg = treatments.render_variant(ctx, "logo", SOLID_LOGO[0], True)
     out = tmp_path / "logo.jpg"
@@ -24,6 +24,20 @@ def test_jpg_is_canvas_at_export_scale_rgb(solid_model, tmp_path):
     img = Image.open(out)
     assert img.size == (CANVAS_W * EXPORT_SCALE, CANVAS_H * EXPORT_SCALE)
     assert img.mode == "RGB"   # flattened, no alpha
+
+
+def test_icon_jpg_is_square_1080_at_export_scale(solid_model, tmp_path):
+    """With-bg ICON JPEG is the fixed 1080x1080 SQUARE artboard at @EXPORT_SCALE
+    (default @2x -> 2160x2160) — never stretched to the logo's 16:9."""
+    from app.config import ICON_CANVAS
+    from app.recipes import SOLID_ICON
+    ctx = _ctx(solid_model)
+    svg = treatments.render_variant(ctx, "icon", SOLID_ICON[0], True)
+    out = tmp_path / "icon.jpg"
+    write_jpg(svg, out)
+    img = Image.open(out)
+    assert img.size == (ICON_CANVAS * EXPORT_SCALE, ICON_CANVAS * EXPORT_SCALE)
+    assert img.mode == "RGB"
 
 
 def test_png_is_1080_logical_wide_at_export_scale_with_alpha(solid_model, tmp_path):

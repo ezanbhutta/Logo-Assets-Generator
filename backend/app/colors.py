@@ -80,6 +80,64 @@ def best_knockout(bg_hex: str) -> str:
         contrast_ratio(config.BLACK, bg_hex) else config.BLACK
 
 
+# An in-palette substitute must really read (body-text contrast), or we fall
+# back to white/black. Looser bars produce muddy tone-on-tone marks.
+SUBSTITUTE_CONTRAST = 4.5
+# Designer fallback: white is the classic mark on a saturated brand color
+# (think white-on-red, white-on-navy) — prefer it whenever it clears ~3:1,
+# even where pure math would score black slightly higher; black only on
+# genuinely light backgrounds (yellow, cream, light gray) where white fails.
+_WHITE_PREF_CONTRAST = 3.0
+
+
+def designer_knockout(bg_hex: str) -> str:
+    """White when it reads on `bg_hex` (>= ~3:1), else black."""
+    return config.WHITE if contrast_ratio(config.WHITE, bg_hex) >= \
+        _WHITE_PREF_CONTRAST else config.BLACK
+
+
+def _distance(a: str, b: str) -> float:
+    """Perceptually-weighted RGB distance — which palette color *feels* closest."""
+    (r1, g1, b1), (r2, g2, b2) = _rgb(a), _rgb(b)
+    return 2 * (r1 - r2) ** 2 + 4 * (g1 - g2) ** 2 + 3 * (b1 - b2) ** 2
+
+
+def best_substitute(fg: str, bg: str, palette: list[str]) -> str:
+    """The color a designer would swap `fg` to so it reads on `bg`, staying in
+    the logo's own scheme.
+
+    Preference order: the most *similar* palette color that genuinely reads on
+    `bg` (>= SUBSTITUTE_CONTRAST) — so a brown mascot outline on a brown brand
+    background becomes the mascot's own cream, not stark white — else the
+    designer white/black fallback. Never returns `fg` itself or anything that
+    blends into the background."""
+    candidates = [c for c in palette
+                  if c and c != fg and contrast_ratio(c, bg) >= SUBSTITUTE_CONTRAST]
+    if candidates:
+        return min(candidates, key=lambda c: _distance(c, fg))
+    return designer_knockout(bg)
+
+
+def mix_hex(a: str, b: str, t: float) -> str:
+    """Linear mix of two hex colors: t=0 -> a, t=1 -> b."""
+    (r1, g1, b1), (r2, g2, b2) = _rgb(a), _rgb(b)
+    def ch(x1: float, x2: float) -> int:
+        return max(0, min(255, round((x1 + (x2 - x1) * t) * 255)))
+    return f"#{ch(r1, r2):02x}{ch(g1, g2):02x}{ch(b1, b2):02x}"
+
+
+def shade_of(brand_hex: str) -> str:
+    """A deep shade of the brand color — the in-scheme alternate background for
+    a 1-color logo (replaces the old plain-black fallback). Darkened just until
+    white reads comfortably on it; a near-black brand color shades to ~itself."""
+    shade = mix_hex(brand_hex, config.BLACK, 0.45)
+    t = 0.45
+    while contrast_ratio(config.WHITE, shade) < SUBSTITUTE_CONTRAST and t < 0.9:
+        t += 0.1
+        shade = mix_hex(brand_hex, config.BLACK, t)
+    return shade
+
+
 def _is_brand_color(hex_color: str) -> bool:
     """Chromatic (has hue) and not near-white -> eligible as a brand color."""
     return saturation(hex_color) >= _NEUTRAL_SAT and luminance(hex_color) < config.NEAR_WHITE_LUMINANCE
@@ -189,10 +247,20 @@ def _rank_brand_colors(nodes: list[PathNode],
     candidates = [h for h in solids if _is_brand_color(h) and h not in exclude]
 
     if not candidates:
-        return solids, config.BLACK, config.BLACK
+        # Neutral-only logo (e.g. a black wordmark): no chromatic color to use,
+        # so the alternate backgrounds come from the logo's own NEUTRAL scale —
+        # a charcoal and a light gray tint of its ink (in-scheme; three identical
+        # black slots would be useless). On the light gray the dark mark still
+        # reads, so that slot keeps the logo in its true color.
+        base = min(solids, key=luminance) if solids else config.BLACK
+        if luminance(base) > 0.5:          # all-light neutral logo (rare)
+            return solids, mix_hex(base, config.BLACK, 0.75), mix_hex(base, config.BLACK, 0.45)
+        return solids, mix_hex(base, config.WHITE, 0.28), mix_hex(base, config.WHITE, 0.85)
     if len(candidates) == 1:
-        # 1-color logo: brand-B falls back to black (§6.1).
-        return solids, candidates[0], config.BLACK
+        # 1-color logo: brand-B = a deep shade of the brand color, so the
+        # alternate background stays in the logo's own scheme (owner standard;
+        # previously plain black).
+        return solids, candidates[0], shade_of(candidates[0])
 
     top2 = candidates[:2]
     # brand-A = the darker; brand-B = the more vivid/primary.

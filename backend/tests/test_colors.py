@@ -19,12 +19,43 @@ def test_gradient_classification(gradient_model):
     assert r.gradient_ids == ["flameGrad"]
 
 
-def test_one_color_brand_b_falls_back_to_black():
+def test_one_color_brand_b_is_in_scheme_shade():
+    """A 1-color logo's alternate background stays IN the logo's scheme: a deep
+    shade of the brand color, not plain black (owner standard)."""
     svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
            '<rect x="0" y="0" width="40" height="40" fill="#ec1c24"/></svg>')
     r = colors.detect(WorkingSVG.from_string(svg))
     assert r.brand_a == "#ec1c24"
-    assert r.brand_b == "#000000"   # §6.1 fallback
+    assert r.brand_b not in ("#000000", "#ec1c24")    # a shade, not black/itself
+    rr, gg, bb = (int(r.brand_b[i:i + 2], 16) for i in (1, 3, 5))
+    assert rr > gg and rr > bb                         # still red-family (in-scheme)
+    assert colors.contrast_ratio("#ffffff", r.brand_b) >= 4.5   # white reads on it
+
+
+def test_neutral_only_logo_gets_neutral_scale_backgrounds():
+    """A black/neutral-only wordmark has no chromatic brand color — the
+    alternate backgrounds come from its own neutral scale (charcoal + light
+    gray), not three identical black slots."""
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100">'
+           '<rect x="10" y="30" width="40" height="40" fill="#1d1d1b"/>'
+           '<rect x="60" y="30" width="40" height="40" fill="#1d1d1b"/></svg>')
+    r = colors.detect(WorkingSVG.from_string(svg))
+    la, lb = colors.luminance(r.brand_a), colors.luminance(r.brand_b)
+    assert 0.03 < la < 0.35                 # charcoal — darker than mid, not black
+    assert lb > 0.55                        # light gray — the mark reads in its own ink
+    assert colors.contrast_ratio("#1d1d1b", r.brand_b) >= 2.2
+
+
+def test_best_substitute_prefers_palette_then_white():
+    """The adaptive substitute: most-similar palette color that READS, else the
+    designer white/black fallback (white preferred on saturated brand colors)."""
+    brown, cream, orange = "#5b3a1e", "#f4e9d8", "#e07020"
+    # brown failing on brown bg -> cream (in-palette, reads at 4.5+), not white
+    assert colors.best_substitute(brown, brown, [brown, cream, orange]) == cream
+    # nothing in-palette reads on navy -> white (designer preference)
+    assert colors.best_substitute("#112630", "#112630", ["#112630"]) == "#ffffff"
+    # on a light background, white fails -> black
+    assert colors.best_substitute("#f4e9d8", "#f4e9d8", ["#f4e9d8"]) == "#000000"
 
 
 def test_removed_stray_excluded_from_brand(solid_model):

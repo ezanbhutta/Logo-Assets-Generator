@@ -6,17 +6,26 @@ into a variant SVG. Backgrounds are symbolic and resolved per-logo (§6.1):
     white      -> #ffffff
     black      -> #000000
     brand_a    -> darker brand color   (e.g. navy #112630)
-    brand_b    -> vivid brand color    (e.g. red  #ec1c24); falls back to black
-                  for a 1-color logo
+    brand_b    -> vivid brand color    (e.g. red  #ec1c24); for a 1-color logo,
+                  a deep in-scheme shade of the brand color
     gradient   -> rebuilt canvas-scale brand gradient, full-bleed (§7.5)
     dark_stop  -> solid sampled from the gradient's darkest stop (§6.4/05)
 
 Recolor values:
 
-    full   -> fills unchanged
-    white  -> every fill (incl. gradient-filled paths) -> #fff
-    black  -> every fill -> #000
-    split  -> icon group unchanged; wordmark group -> #fff (logo only)
+    full   -> ADAPTIVE: fills kept; on a colored background every color that
+              reads stays, and each one that doesn't is swapped to the most
+              similar color from the logo's own palette that reads (else
+              white/black, preferring white on saturated brand colors). The
+              treatment engine's layer-aware contrast guard implements this —
+              so a red-on-navy logo keeps its red on the navy background, a
+              mascot keeps every readable color, and a purple-on-purple logo
+              becomes the classic white knockout. Never a color outside the
+              logo's scheme.
+    white  -> every fill (incl. gradient-filled paths) -> #fff  (mono)
+    black  -> every fill -> #000                                 (mono)
+    split  -> icon group unchanged; wordmark group -> #fff (transparent logo
+              02 — the ready-for-dark-backgrounds cut)
 """
 
 from dataclasses import dataclass
@@ -30,29 +39,33 @@ class Treatment:
 
 
 # --- §6.2 SOLID logo, with background ---------------------------------------
+# The identity sheet a designer ships: true colors on white, the two brand-
+# background usages (adaptive, in-scheme), and the guaranteed mono pair.
 SOLID_LOGO = [
     Treatment(1, "white", "full"),
-    Treatment(2, "brand_a", "split"),
-    Treatment(3, "brand_b", "white"),
-    Treatment(4, "white", "black"),
-    Treatment(5, "black", "white"),
+    Treatment(2, "brand_a", "full"),    # adaptive on the dark brand color
+    Treatment(3, "brand_b", "full"),    # adaptive on the vivid brand color
+    Treatment(4, "white", "black"),     # mono black
+    Treatment(5, "black", "white"),     # mono white (reversed)
 ]
 
-# --- §6.3 SOLID icon, with background (no wordmark -> no split) --------------
+# --- §6.3 SOLID icon, with background ----------------------------------------
 SOLID_ICON = [
     Treatment(1, "white", "full"),
-    Treatment(2, "brand_a", "full"),   # icon in its own color
-    Treatment(3, "brand_b", "white"),
+    Treatment(2, "brand_a", "full"),
+    Treatment(3, "brand_b", "full"),
     Treatment(4, "white", "black"),
     Treatment(5, "black", "white"),
 ]
 
 # --- §6.4 GRADIENT logo, with background ------------------------------------
 # White knockout is the FIXED treatment on the gradient background (§8 rule 5).
+# On black the gradient is kept when its tone reads (a vivid gradient glows on
+# black); the guard swaps it to a readable solid when it would vanish.
 GRADIENT_LOGO = [
     Treatment(1, "white", "full"),
     Treatment(2, "gradient", "white"),   # hero: white knockout on full-bleed gradient
-    Treatment(3, "black", "white"),
+    Treatment(3, "black", "full"),       # adaptive: gradient kept on black if it reads
     Treatment(4, "white", "black"),
     Treatment(5, "dark_stop", "white"),
 ]
@@ -61,7 +74,7 @@ GRADIENT_LOGO = [
 GRADIENT_ICON = [
     Treatment(1, "white", "full"),
     Treatment(2, "gradient", "white"),
-    Treatment(3, "black", "white"),
+    Treatment(3, "black", "full"),
     Treatment(4, "white", "black"),
     Treatment(5, "dark_stop", "white"),
 ]

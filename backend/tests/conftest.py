@@ -41,10 +41,16 @@ def gradient_model(gradient_svg):
 
 def render(svg_text: str, w: int | None = None, h: int | None = None):
     """Rasterize an SVG string to a PIL RGB(A) image for pixel assertions.
-    Defaults to the square with-bg canvas."""
+    Defaults to the variant's OWN artboard size (logo 1920x1080, icon
+    1080x1080) — forcing one size would distort the square icon artboard."""
+    import re
     import cairosvg
     from PIL import Image
     from app.config import CANVAS_W, CANVAS_H
+    if w is None and h is None:
+        m = re.search(r'viewBox\s*=\s*["\'][^"\']*?([\d.]+)\s+([\d.]+)["\']', svg_text)
+        if m:
+            w, h = round(float(m.group(1))), round(float(m.group(2)))
     png = cairosvg.svg2png(bytestring=svg_text.encode("utf-8"),
                            output_width=w or CANVAS_W, output_height=h or CANVAS_H)
     return Image.open(io.BytesIO(png))
