@@ -14,7 +14,10 @@ logo delivery package as a `.zip`. Upload → zip out. No DB, no auth.
   `POST /generate`, `GET /health`. Stateless per-job temp dirs, cleaned on
   completion.
 - **Frontend:** React + Vite + Tailwind (`frontend/`). Live **true-vector** SVG
-  preview; icon box mapped to SVG user space.
+  preview; the logo/icon boxes are drawn on an **overlay `<svg>` that shares the
+  artwork's exact viewBox**, and screen↔user-space mapping uses the browser's own
+  `getScreenCTM()` (never hand-rolled rect math — that silently mis-mapped boxes
+  when the preview letterboxed, so a box drawn on the mark missed it server-side).
 - **Vector toolchain:** `pdf2svg` (.ai→SVG, gradients preserved), `svgelements`
   (geometry), `lxml` (fill model/edits), `cairosvg` (PNG/JPEG), `rsvg-convert`
   (vector PDF). Needs native binaries → **deploy on Docker/Render, not Vercel.**
