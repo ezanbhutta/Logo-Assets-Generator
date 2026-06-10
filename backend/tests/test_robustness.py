@@ -68,6 +68,24 @@ def test_viewbox_with_pt_units_is_stripped_to_numbers():
            '<rect x="10" y="10" width="40" height="40" fill="#111"/></svg>')
     m = WorkingSVG.from_string(svg)
     assert m.root.get("viewBox") == "0 0 880.91 610.75"
+
+
+def test_pt_units_do_not_rescale_geometry():
+    """The live-failure root cause: a converter emits ``width="880.91pt"`` with a
+    matching viewBox, and some svgelements versions convert the pt to px (x1.333)
+    — a shape at user x=602 then measured as bbox x~802, 1.333x larger than the
+    viewBox. The browser maps a box into viewBox units, the server compared it to
+    px-scaled geometry, and a box ON the mark missed. width/height must be pinned
+    to the viewBox's unitless size so geometry stays in viewBox space."""
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" width="880.91pt" height="610.75pt" '
+           'viewBox="0 0 880.91 610.75">'
+           '<rect x="602" y="133" width="58" height="110" fill="#111"/></svg>')
+    m = WorkingSVG.from_string(svg)
+    assert m.root.get("width") == "880.91" and m.root.get("height") == "610.75"
+    bb = m.ink_nodes[0].bbox
+    assert abs(bb[0] - 602) < 1 and abs(bb[2] - 660) < 1   # viewBox space, not ~802 px
+    sel, inc = selection.select(m, logo_box=None, icon_box=(590, 120, 90, 140))
+    assert inc is True and len(sel.icon) == 1              # viewBox-space box hits
 def test_auto_segment_skips_huge_artboard():
     parts = ['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 3000 3000">']
     for i in range(selection.SEG_MAX_NODES + 50):

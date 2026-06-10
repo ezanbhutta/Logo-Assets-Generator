@@ -74,22 +74,39 @@ class WorkingSVG:
         self.by_lpid: dict[str, PathNode] = {n.lpid: n for n in self.nodes}
 
     def _ensure_viewbox(self) -> None:
-        """Guarantee the root carries a viewBox that equals the SVG's own
-        coordinate system. Converters differ — some emit a viewBox, some emit
-        only width/height (and the px scale varies by poppler version). Without
-        a viewBox, ``viewbox`` used to fall back to the ink bounding box, whose
-        origin/aspect do NOT match the SVG the browser renders — so the preview
-        overlay and the artwork ended up in different coordinate systems and a
-        box drawn on the mark missed it server-side. Deriving the viewBox from
-        width/height (or, as a last resort, the content bounds) keeps the
-        served SVG, ``viewbox``, svgelements geometry, and the browser all in
-        ONE space."""
-        if self.root.get("viewBox"):
+        """Lock the SVG to ONE coordinate system shared by the browser preview,
+        the served ``viewbox``, and svgelements geometry.
+
+        Two converter quirks break that otherwise:
+          * some poppler builds emit width/height but **no viewBox** — geometry
+            then had no frame and ``viewbox`` fell back to the ink bbox (wrong
+            origin/aspect);
+          * some emit ``width="880.91pt"`` alongside ``viewBox="0 0 880.91 …"``,
+            and some **svgelements versions convert the ``pt`` to px** (×1.333),
+            so every bbox lands 1.333× larger than the viewBox. The browser maps
+            a box into viewBox units, the server then compares it to px-scaled
+            geometry, and a box drawn on the mark misses it server-side.
+
+        Fix: ensure a viewBox exists, then pin width/height to the viewBox's
+        **unitless** numbers so no version can rescale the geometry by units."""
+        root = self.root
+        if not root.get("viewBox"):
+            w = _parse_length(root.get("width"))
+            h = _parse_length(root.get("height"))
+            if w and h:
+                root.set("viewBox", f"0 0 {w:g} {h:g}")
+        vb = root.get("viewBox")
+        if not vb:
             return
-        w = _parse_length(self.root.get("width"))
-        h = _parse_length(self.root.get("height"))
-        if w and h:
-            self.root.set("viewBox", f"0 0 {w:g} {h:g}")
+        try:
+            parts = [float(x) for x in vb.replace(",", " ").split()]
+        except ValueError:
+            return
+        if len(parts) == 4 and parts[2] > 0 and parts[3] > 0:
+            # unitless width/height == viewBox size -> svgelements maps 1:1, in
+            # the SAME space the browser and `viewbox` use (no pt->px drift).
+            root.set("width", f"{parts[2]:g}")
+            root.set("height", f"{parts[3]:g}")
 
     @property
     def ink_nodes(self) -> list[PathNode]:
