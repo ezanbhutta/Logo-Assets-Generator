@@ -43,7 +43,31 @@ def test_png_export_caps_extreme_aspect(tmp_path):
     assert max(w, h) <= 16384 and w >= 1 and h >= 1
 
 
-# --- auto-segment scaling ----------------------------------------------------
+# --- viewBox normalization (converter coordinate-space drift) ---------------
+def test_viewbox_derived_when_converter_omits_it():
+    """Some poppler builds emit width/height but NO viewBox (and a px scale that
+    differs host-to-host). Without a viewBox, `viewbox` used to fall back to the
+    ink bbox — a different origin/aspect than the SVG the browser renders, so a
+    box drawn on the mark missed it server-side. The viewBox must be derived
+    from width/height so the served SVG, `viewbox`, geometry, and the browser
+    all share ONE coordinate system."""
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" width="1174.5" height="814.3">'
+           '<rect x="800" y="180" width="100" height="150" fill="#111"/></svg>')
+    m = WorkingSVG.from_string(svg)
+    assert m.root.get("viewBox") == "0 0 1174.5 814.3"   # derived, not absent
+    assert m.viewbox == (0.0, 0.0, 1174.5, 814.3)        # matches the SVG, not the ink bbox
+    assert "viewBox" in m.serialize()                     # the preview gets it too
+    # a box in that px space selects the mark (the live-failure coordinate scale)
+    sel, inc = selection.select(m, logo_box=None, icon_box=(790, 170, 130, 170))
+    assert inc is True and len(sel.icon) == 1
+
+
+def test_viewbox_with_pt_units_is_stripped_to_numbers():
+    """width/height carrying a unit (e.g. pt) still yield a numeric viewBox."""
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" width="880.91pt" height="610.75pt">'
+           '<rect x="10" y="10" width="40" height="40" fill="#111"/></svg>')
+    m = WorkingSVG.from_string(svg)
+    assert m.root.get("viewBox") == "0 0 880.91 610.75"
 def test_auto_segment_skips_huge_artboard():
     parts = ['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 3000 3000">']
     for i in range(selection.SEG_MAX_NODES + 50):

@@ -10,6 +10,7 @@ views of the same element in lockstep:
 from __future__ import annotations
 
 import io
+import re
 from dataclasses import dataclass
 from functools import cached_property
 
@@ -21,6 +22,18 @@ from .config import LPID_ATTR
 from .svgutil import qn
 
 BBox = tuple[float, float, float, float]
+
+# Length with an optional CSS/SVG unit (px, pt, mm, ...). Used to derive a
+# viewBox from width/height when a converter omits one. '%' is unresolvable
+# here (no parent) -> None, so we fall back to the content bounds instead.
+_LEN_RE = re.compile(r"^\s*([0-9]*\.?[0-9]+)\s*(px|pt|pc|mm|cm|in|em|ex)?\s*$", re.I)
+
+
+def _parse_length(value: str | None) -> float | None:
+    if not value:
+        return None
+    m = _LEN_RE.match(value)
+    return float(m.group(1)) if m else None
 
 
 @dataclass
@@ -52,12 +65,31 @@ class WorkingSVG:
 
     def __init__(self, root: etree._Element):
         self.root = svgutil.flatten_uses(root)   # inline <use> text -> tagged paths
+        self._ensure_viewbox()                   # guarantee a real coordinate system
         self.class_map = svgutil.parse_style_classes(self.root)
         self.parents = svgutil.build_parent_map(self.root)
         self._tag_leaves()
         self.nodes: list[PathNode] = self._build_nodes()
         self._mark_background()
         self.by_lpid: dict[str, PathNode] = {n.lpid: n for n in self.nodes}
+
+    def _ensure_viewbox(self) -> None:
+        """Guarantee the root carries a viewBox that equals the SVG's own
+        coordinate system. Converters differ — some emit a viewBox, some emit
+        only width/height (and the px scale varies by poppler version). Without
+        a viewBox, ``viewbox`` used to fall back to the ink bounding box, whose
+        origin/aspect do NOT match the SVG the browser renders — so the preview
+        overlay and the artwork ended up in different coordinate systems and a
+        box drawn on the mark missed it server-side. Deriving the viewBox from
+        width/height (or, as a last resort, the content bounds) keeps the
+        served SVG, ``viewbox``, svgelements geometry, and the browser all in
+        ONE space."""
+        if self.root.get("viewBox"):
+            return
+        w = _parse_length(self.root.get("width"))
+        h = _parse_length(self.root.get("height"))
+        if w and h:
+            self.root.set("viewBox", f"0 0 {w:g} {h:g}")
 
     @property
     def ink_nodes(self) -> list[PathNode]:

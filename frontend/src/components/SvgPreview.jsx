@@ -1,37 +1,76 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 
 // Renders the working SVG as TRUE vector and lets the CSR drag TWO boxes:
 // a Logo-region box (carve the logo out of a brand-sheet/bento) and an Icon box.
 //
-// Coordinate mapping (§7.2): an overlay <svg> shares the artwork's exact viewBox
-// and sits in the same box, so it letterboxes identically to the preview. Screen
-// points are mapped to SVG user space with the browser's own getScreenCTM() —
-// not hand-rolled rect math — so the box the server receives lines up with the
-// artwork no matter how the preview is scaled or letterboxed. Boxes are drawn as
-// <rect> in user space inside that overlay, so they align with the art natively.
+// Coordinate mapping (§7.2): screen <-> SVG user space goes through the ACTUAL
+// injected artwork SVG's own getScreenCTM() — the browser's ground-truth
+// transform for what it rendered. This matches whatever viewBox/scale the
+// server's converter produced (poppler emits pt on one host, px on another) and
+// the geometry the server measured from that same SVG, so a box drawn on the
+// mark lands on it server-side. Never hand-rolled rect math, and never a
+// separate viewBox guess — those silently mis-mapped when the converter's scale
+// differed from the `viewbox` prop.
 export default function SvgPreview({ workingSvg, viewbox, logoBox, iconBox, active, onBox }) {
-  const overlayRef = useRef(null);
+  const hostRef = useRef(null);
   const start = useRef(null);
   const [drag, setDrag] = useState(null); // {x,y,w,h} in USER space
+  const [, setTick] = useState(0); // bump to reposition overlays on layout change
 
-  const [minX, minY, maxX, maxY] = viewbox;
-  const vbW = maxX - minX || 1;
-  const vbH = maxY - minY || 1;
-  const stroke = Math.max(vbW, vbH) / 320; // ~visible at any artboard size
-  const font = Math.max(vbW, vbH) * 0.026;
+  // Reposition overlay boxes whenever the SVG is (re)injected or the host
+  // resizes — getScreenCTM depends on the live layout.
+  useEffect(() => {
+    const el = hostRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setTick((t) => t + 1));
+    ro.observe(el);
+    const id = requestAnimationFrame(() => setTick((t) => t + 1));
+    return () => {
+      ro.disconnect();
+      cancelAnimationFrame(id);
+    };
+  }, [workingSvg]);
 
-  // screen px -> SVG user space, via the overlay's own CTM (accounts for the
-  // viewBox AND preserveAspectRatio letterboxing exactly). Returns null until
-  // the SVG is laid out.
+  const svgEl = () => hostRef.current && hostRef.current.querySelector("svg");
+
+  // screen px -> SVG user space, via the artwork SVG's own CTM.
   function toUser(clientX, clientY) {
-    const svg = overlayRef.current;
-    const ctm = svg && svg.getScreenCTM && svg.getScreenCTM();
-    if (!ctm) return null;
-    const pt = svg.createSVGPoint();
-    pt.x = clientX;
-    pt.y = clientY;
-    const u = pt.matrixTransform(ctm.inverse());
+    const svg = svgEl();
+    const m = svg && svg.getScreenCTM && svg.getScreenCTM();
+    if (!m) return null;
+    const p = svg.createSVGPoint();
+    p.x = clientX;
+    p.y = clientY;
+    const u = p.matrixTransform(m.inverse());
     return [u.x, u.y];
+  }
+
+  // SVG user space -> host-relative CSS px, to position overlay boxes exactly
+  // over the artwork (same CTM, so letterboxing/scale are handled for free).
+  function toHostPx(ux, uy) {
+    const svg = svgEl();
+    const host = hostRef.current;
+    const m = svg && svg.getScreenCTM && svg.getScreenCTM();
+    if (!m || !host) return null;
+    const p = svg.createSVGPoint();
+    p.x = ux;
+    p.y = uy;
+    const s = p.matrixTransform(m);
+    const r = host.getBoundingClientRect();
+    return [s.x - r.left, s.y - r.top];
+  }
+
+  function boxStyle(b) {
+    if (!b) return null;
+    const a = toHostPx(b[0], b[1]);
+    const c = toHostPx(b[0] + b[2], b[1] + b[3]);
+    if (!a || !c) return null;
+    return {
+      left: Math.min(a[0], c[0]),
+      top: Math.min(a[1], c[1]),
+      width: Math.abs(c[0] - a[0]),
+      height: Math.abs(c[1] - a[1]),
+    };
   }
 
   function onPointerDown(e) {
@@ -60,59 +99,63 @@ export default function SvgPreview({ workingSvg, viewbox, logoBox, iconBox, acti
     start.current = null;
     setDrag(null);
     if (!u) return;
-    const x = Math.min(s[0], u[0]);
-    const y = Math.min(s[1], u[1]);
     const w = Math.abs(u[0] - s[0]);
     const h = Math.abs(u[1] - s[1]);
-    if (w > 0.5 && h > 0.5) onBox([round(x), round(y), round(w), round(h)]);
+    if (w > 0.5 && h > 0.5) {
+      onBox([round(Math.min(s[0], u[0])), round(Math.min(s[1], u[1])), round(w), round(h)]);
+    }
   }
+
+  // Host aspect ratio (cosmetic — keeps the preview from letterboxing). Mapping
+  // does NOT depend on this; it uses the live CTM.
+  const [minX, minY, maxX, maxY] = viewbox;
+  const arW = maxX - minX || 1;
+  const arH = maxY - minY || 1;
+
+  const logoStyle = logoBox && boxStyle(logoBox);
+  const iconStyle = iconBox && boxStyle(iconBox);
+  const dragStyle = drag && boxStyle([drag.x, drag.y, drag.w, drag.h]);
 
   return (
     <div className="relative w-full">
       <div
+        ref={hostRef}
         className="svg-host relative w-full overflow-hidden rounded-lg ring-1 ring-slate-300 bg-[conic-gradient(#f8fafc_90deg,#eef2f7_0_180deg,#f8fafc_0_270deg,#eef2f7_0)] bg-[length:24px_24px]"
-        style={{ aspectRatio: `${vbW} / ${vbH}` }}
+        style={{ aspectRatio: `${arW} / ${arH}` }}
         dangerouslySetInnerHTML={{ __html: workingSvg }}
       />
-      <svg
-        ref={overlayRef}
-        viewBox={`${minX} ${minY} ${vbW} ${vbH}`}
-        preserveAspectRatio="xMidYMid meet"
-        className={`absolute inset-0 h-full w-full ${active ? "cursor-crosshair" : "pointer-events-none"}`}
+      <div
+        className={`absolute inset-0 ${active ? "cursor-crosshair" : "pointer-events-none"}`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
       >
-        {/* full-area capture rect: SVG only hits painted geometry, so this makes
-            the whole artboard interactive (pointerEvents="all" ignores fill). */}
-        <rect x={minX} y={minY} width={vbW} height={vbH} fill="none" pointerEvents="all" />
-        {logoBox && <BoxRect box={logoBox} color="#7229ff" label="Logo" stroke={stroke} font={font} />}
-        {iconBox && <BoxRect box={iconBox} color="#10b981" label="Icon" stroke={stroke} font={font} />}
-        {drag && (
-          <rect
-            x={drag.x}
-            y={drag.y}
-            width={drag.w}
-            height={drag.h}
-            fill={active === "icon" ? "#10b98122" : "#7229ff22"}
-            stroke={active === "icon" ? "#10b981" : "#7229ff"}
-            strokeWidth={stroke}
+        {logoStyle && <BoxRect style={logoStyle} color="pulse" label="Logo" />}
+        {iconStyle && <BoxRect style={iconStyle} color="emerald" label="Icon" />}
+        {dragStyle && (
+          <div
+            className={`absolute border-2 ${
+              active === "icon" ? "border-emerald-500 bg-emerald-500/10" : "border-pulse-500 bg-pulse-500/10"
+            }`}
+            style={dragStyle}
           />
         )}
-      </svg>
+      </div>
     </div>
   );
 }
 
-function BoxRect({ box, color, label, stroke, font }) {
-  const [x, y, w, h] = box;
+function BoxRect({ style, color, label }) {
+  const c =
+    color === "emerald"
+      ? "border-emerald-500 bg-emerald-500/5 text-emerald-700"
+      : "border-pulse-500 bg-pulse-500/5 text-pulse-700";
   return (
-    <g>
-      <rect x={x} y={y} width={w} height={h} fill={`${color}14`} stroke={color} strokeWidth={stroke} />
-      <text x={x + stroke * 2} y={y - stroke * 2} fontSize={font} fontWeight="700" fill={color}>
+    <div className={`absolute border-2 ${c}`} style={style}>
+      <span className={`absolute -top-5 left-0 rounded px-1 text-[10px] font-semibold ${c} bg-white/90`}>
         {label}
-      </text>
-    </g>
+      </span>
+    </div>
   );
 }
 

@@ -14,10 +14,18 @@ logo delivery package as a `.zip`. Upload → zip out. No DB, no auth.
   `POST /generate`, `GET /health`. Stateless per-job temp dirs, cleaned on
   completion.
 - **Frontend:** React + Vite + Tailwind (`frontend/`). Live **true-vector** SVG
-  preview; the logo/icon boxes are drawn on an **overlay `<svg>` that shares the
-  artwork's exact viewBox**, and screen↔user-space mapping uses the browser's own
-  `getScreenCTM()` (never hand-rolled rect math — that silently mis-mapped boxes
-  when the preview letterboxed, so a box drawn on the mark missed it server-side).
+  preview; screen↔user-space mapping goes through the **injected artwork SVG's
+  own `getScreenCTM()`** (the browser's ground-truth transform for what it
+  rendered), and overlay boxes are positioned via that same CTM. Never
+  hand-rolled rect math and never a separate viewBox guess — a converter whose
+  px scale differed from the `viewbox` prop silently mis-mapped boxes, so a box
+  drawn on the mark missed it server-side.
+- **Coordinate space is normalized at ingest** (`WorkingSVG._ensure_viewbox`):
+  some poppler builds emit width/height but no viewBox (and the px scale varies
+  host-to-host). A viewBox is derived from width/height so the served SVG,
+  `viewbox`, svgelements geometry, and the browser all share ONE space —
+  otherwise `viewbox` fell back to the ink bbox (different origin/aspect) and the
+  preview overlay drifted from the artwork.
 - **Vector toolchain:** `pdf2svg` (.ai→SVG, gradients preserved), `svgelements`
   (geometry), `lxml` (fill model/edits), `cairosvg` (PNG/JPEG), `rsvg-convert`
   (vector PDF). Needs native binaries → **deploy on Docker/Render, not Vercel.**
