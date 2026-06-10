@@ -54,11 +54,25 @@ export default function App() {
     setSuggestion(null);
     setUsedSuggestion(false);
     setDetectNote("");
-    setLogoBox(null);   // start blank — the CSR draws, or presses Auto-detect
+    setLogoBox(null);
     setIconBox(null);
     if (index != null) {
       const b = r.artboards.find((x) => x.index === index);
-      if (b.suggestion) setSuggestion(b.suggestion);  // geometric fallback for Auto-detect
+      if (b.suggestion) {
+        setSuggestion(b.suggestion); // keep for the Auto-detect fallback
+        // Auto-apply the engine's detected boxes immediately. They are computed
+        // in the artwork's OWN coordinate space (server-side), so they're always
+        // correct — no dependence on the browser's screen->SVG mapping. The CSR
+        // can still adjust, clear, or run AI Auto-detect to refine. This makes
+        // the common brand-sheet case work with zero clicks.
+        const { logo_box, icon_box, note } = b.suggestion;
+        if (logo_box) setLogoBox(logo_box);
+        if (icon_box) setIconBox(icon_box);
+        if (logo_box || icon_box) {
+          setUsedSuggestion(true);
+          setDetectNote(note || "");
+        }
+      }
       setMark(b.named_selection ? "named" : "icon");
       if (!b.supported) setManual({ reasons: b.reasons });
     }
