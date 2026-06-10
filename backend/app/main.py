@@ -171,9 +171,15 @@ def generate_endpoint(body: GenerateRequestBody):
         result = run_generate(req, job)
     except selection.BoxMiss as e:
         # A drawn box covers no artwork: tell the CSR to adjust it. The job
-        # stays alive so they can fix the box and generate again.
+        # stays alive so they can fix the box and generate again. The received
+        # box + artwork extent are echoed so a screenshot of the error is
+        # enough to diagnose a client-side coordinate-mapping bug.
+        logging.getLogger("uvicorn.error").warning(
+            "box_miss job=%s artboard=%s box=%s received=%s artwork=%s",
+            body.job_id, body.artboard, e.box, e.received, e.artwork)
         raise HTTPException(status_code=422, detail={
-            "error": "box_miss", "box": e.box, "message": str(e)})
+            "error": "box_miss", "box": e.box, "message": str(e),
+            "received": e.received, "artwork": e.artwork})
     except ManualFlag as e:
         # Out-of-scope: refuse cleanly, leave no partial package (§8/6, §9).
         shutil.rmtree(job, ignore_errors=True)
@@ -200,6 +206,21 @@ def generate_endpoint(body: GenerateRequestBody):
 
 
 # Serve the built frontend if present (single-origin prod deploy).
+class _UIFiles(StaticFiles):
+    """StaticFiles with deploy-safe caching: the HTML shell must revalidate on
+    every load (`no-cache`) so a redeploy is picked up by a normal reload —
+    otherwise a cached index.html keeps referencing the OLD hashed bundle and
+    the user keeps running stale code after a fix ships. The content-hashed
+    /assets/* are immutable and may cache forever."""
+    async def get_response(self, path: str, scope):
+        resp = await super().get_response(path, scope)
+        if path.startswith("assets/"):
+            resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+
 _DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 if _DIST.is_dir():
-    app.mount("/", StaticFiles(directory=str(_DIST), html=True), name="ui")
+    app.mount("/", _UIFiles(directory=str(_DIST), html=True), name="ui")

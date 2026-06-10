@@ -30,8 +30,13 @@ export async function generate(body) {
     }
     if (detail && detail.error === "box_miss") {
       // A drawn box covers no artwork — the job is still alive; the CSR just
-      // adjusts the box and generates again.
-      throw new Error(detail.message || "A marked box doesn't cover any artwork — adjust it and try again.");
+      // adjusts the box and generates again. Echo the server's view of the
+      // coordinates so a screenshot of this banner is a full diagnosis.
+      let msg = detail.message || "A marked box doesn't cover any artwork — adjust it and try again.";
+      if (detail.received && detail.artwork) {
+        msg += ` [server saw ${detail.box} box ${detail.received.join(",")} vs artwork ${detail.artwork.join(",")}]`;
+      }
+      throw new Error(msg);
     }
     throw new Error(
       typeof detail === "string" ? detail : `Generate failed (${res.status})`

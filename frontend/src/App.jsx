@@ -318,7 +318,7 @@ export default function App() {
       </main>
 
       <footer className="border-t border-slate-200 py-5 text-center text-xs text-slate-400">
-        HaseebMadeIt · Logo Package Engine — upload → zip
+        HaseebMadeIt · Logo Package Engine — upload → zip · build {typeof __BUILD_STAMP__ !== "undefined" ? __BUILD_STAMP__ : "dev"}
       </footer>
     </div>
   );

@@ -48,9 +48,12 @@ class BoxMiss(Exception):
     """An explicitly-drawn box selects no artwork. Raised instead of silently
     shipping garbage (a whole brand sheet for a missed logo box; a zip with no
     icon for a missed icon box) — the CSR is told to adjust the box and the job
-    stays alive for the retry."""
-    def __init__(self, box: str):
+    stays alive for the retry. Carries the received box and the artwork extent
+    so the error itself diagnoses a coordinate-mapping problem."""
+    def __init__(self, box: str, received=None, artwork=None):
         self.box = box                       # 'logo' | 'icon'
+        self.received = [round(v, 1) for v in received] if received else None
+        self.artwork = [round(v, 1) for v in artwork] if artwork else None
         super().__init__(
             f"The {box} box doesn't cover any artwork — adjust the "
             f"{'purple' if box == 'logo' else 'green'} box and generate again.")
@@ -335,7 +338,7 @@ def select(model: WorkingSVG,
             # An explicit logo box that covers nothing is a mistake — refuse
             # loudly. Falling back to the whole artwork silently shipped an
             # entire brand sheet as the "logo".
-            raise BoxMiss("logo")
+            raise BoxMiss("logo", received=logo_box, artwork=_bbox_of(pool))
         logo_ids = [n.lpid for n in pool]  # no box -> whole artwork (normal flow)
     elif logo_box is not None:
         # Snap the box to designer intent: complete the glyph row a partial box
@@ -363,7 +366,7 @@ def select(model: WorkingSVG,
             # CSR adjusts the box. We never silently auto-carve a substitute from
             # the wordmark (that shipped letters the CSR never chose), and we no
             # longer silently ship a zip with the icon set missing either.
-            raise BoxMiss("icon")
+            raise BoxMiss("icon", received=icon_box, artwork=_bbox_of(pool))
     else:
         cand = _named_in(model, logo_set)
         if cand:
