@@ -44,6 +44,18 @@ class Selection:
         return [i for i in self.logo if i not in ic]
 
 
+class BoxMiss(Exception):
+    """An explicitly-drawn box selects no artwork. Raised instead of silently
+    shipping garbage (a whole brand sheet for a missed logo box; a zip with no
+    icon for a missed icon box) — the CSR is told to adjust the box and the job
+    stays alive for the retry."""
+    def __init__(self, box: str):
+        self.box = box                       # 'logo' | 'icon'
+        super().__init__(
+            f"The {box} box doesn't cover any artwork — adjust the "
+            f"{'purple' if box == 'logo' else 'green'} box and generate again.")
+
+
 # --- box selection -----------------------------------------------------------
 def select_by_box(model: WorkingSVG, box: tuple[float, float, float, float]) -> Selection:
     """`box` = (x, y, w, h) in SVG user space. Icon = centroids inside the box."""
@@ -222,6 +234,47 @@ def _overlaps_box(node, box, frac: float = 0.3) -> bool:
     return (ox * oy) / narea >= frac
 
 
+def _complete_row(pool: list, ids: list[str]) -> list[str]:
+    """A logo box that catches only PART of a word selects the whole word.
+
+    A hasty drag (or any client-side mapping slip) that ends mid-word would
+    otherwise ship half a wordmark — the live 'ta' bug, where 'tays.' shipped as
+    'ta'. No CSR ever wants half a word, so the selection grows along the
+    baseline: any unselected mark of glyph-like height, sitting on the same
+    line, within about one glyph-gap of the current selection, is pulled in —
+    iterating until the run is complete. Body copy (much smaller), a standalone
+    icon (much larger and far away), and other rows (different baseline) all
+    stay out; the trailing period is handled by ``_attach_punct`` after."""
+    have = set(ids)
+    chosen = [n for n in pool if n.lpid in have and n.bbox]
+    if not chosen:
+        return ids
+    changed = True
+    while changed:
+        changed = False
+        mh = _median_height(chosen)
+        if mh <= 0:
+            break
+        sb = _bbox_of(chosen)
+        cys = sorted((n.bbox[1] + n.bbox[3]) / 2 for n in chosen)
+        row_cy = cys[len(cys) // 2]
+        for n in pool:
+            if n.lpid in have or not n.bbox:
+                continue
+            h = n.bbox[3] - n.bbox[1]
+            if not (0.5 * mh <= h <= 1.8 * mh):
+                continue                               # not a sibling glyph
+            cy = (n.bbox[1] + n.bbox[3]) / 2
+            if abs(cy - row_cy) > 0.6 * mh:
+                continue                               # different line
+            gap = max(sb[0] - n.bbox[2], n.bbox[0] - sb[2], 0.0)
+            if gap <= 0.9 * mh:                        # kerning-scale gap
+                have.add(n.lpid)
+                chosen.append(n)
+                changed = True
+    return [n.lpid for n in pool if n.lpid in have]
+
+
 def _attach_punct(pool: list, ids: list[str]) -> list[str]:
     """Pull a small, detached punctuation-like mark — a period, a sparkle-dot, an
     accent — into a box selection when it floats right against the selected glyphs
@@ -277,9 +330,17 @@ def select(model: WorkingSVG,
     pool = [n for n in ink if n.lpid not in panels] or ink
     logo_ids = [n.lpid for n in pool
                 if logo_box is None or _covered(n, logo_box)]
-    if not logo_ids:                       # box missed everything -> whole artwork
-        logo_ids = [n.lpid for n in pool]
-    elif logo_box is not None:             # keep a trailing period/sparkle on the wordmark
+    if not logo_ids:
+        if logo_box is not None and pool:
+            # An explicit logo box that covers nothing is a mistake — refuse
+            # loudly. Falling back to the whole artwork silently shipped an
+            # entire brand sheet as the "logo".
+            raise BoxMiss("logo")
+        logo_ids = [n.lpid for n in pool]  # no box -> whole artwork (normal flow)
+    elif logo_box is not None:
+        # Snap the box to designer intent: complete the glyph row a partial box
+        # sliced (the live 'ta' bug), then keep a trailing period/sparkle.
+        logo_ids = _complete_row(pool, logo_ids)
         logo_ids = _attach_punct(pool, logo_ids)
     logo_set = set(logo_ids)
 
@@ -297,11 +358,12 @@ def select(model: WorkingSVG,
             # rather than nothing.
             icon_ids = [n.lpid for n in pool if _overlaps_box(n, icon_box)]
         source = "box"
-        # An explicit icon box that lands on no artwork yields NO icon. We never
-        # silently auto-carve one from the wordmark on a miss — that shipped a
-        # mark the CSR never chose (the standalone icon they boxed was discarded
-        # in favour of letters sliced out of the wordmark). An empty result is the
-        # honest signal to redraw the box.
+        if not icon_ids and pool:
+            # An explicit icon box that lands on no artwork: refuse loudly so the
+            # CSR adjusts the box. We never silently auto-carve a substitute from
+            # the wordmark (that shipped letters the CSR never chose), and we no
+            # longer silently ship a zip with the icon set missing either.
+            raise BoxMiss("icon")
     else:
         cand = _named_in(model, logo_set)
         if cand:

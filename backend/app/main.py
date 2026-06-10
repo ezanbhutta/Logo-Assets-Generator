@@ -169,6 +169,11 @@ def generate_endpoint(body: GenerateRequestBody):
 
     try:
         result = run_generate(req, job)
+    except selection.BoxMiss as e:
+        # A drawn box covers no artwork: tell the CSR to adjust it. The job
+        # stays alive so they can fix the box and generate again.
+        raise HTTPException(status_code=422, detail={
+            "error": "box_miss", "box": e.box, "message": str(e)})
     except ManualFlag as e:
         # Out-of-scope: refuse cleanly, leave no partial package (§8/6, §9).
         shutil.rmtree(job, ignore_errors=True)

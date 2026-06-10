@@ -148,13 +148,18 @@ handles wordmarks, combination marks, multi-color mascots, and gradient marks.
   lockup, not the tile rectangle. The **icon box is independent of the logo box**
   — it may mark a sub-region of the lockup or a standalone mark on its own tile
   (an icon derived from the wordmark), and the icon files come from exactly what
-  it covers. An **explicitly-drawn icon box is authoritative**: it selects the
+  it covers. An **explicitly-drawn box is authoritative**: it selects the
   covered marks (with a forgiving overlap retry so a slightly-loose rectangle
-  around a small standalone mark still grabs it); if it lands on no artwork the
-  package ships **no icon** — the engine **never** auto-carves a substitute out
-  of the wordmark on a miss (that silently shipped letters the CSR never chose —
-  the Tays standalone-`t.` bug). Auto/named icon detection applies only when **no**
-  icon box was drawn (the optional-icon convenience path).
+  around a small standalone mark still grabs it). A drawn box that covers **no
+  artwork** makes `/generate` refuse with a 422 `box_miss` (job kept alive for
+  the retry) — never silently ship a logo-only zip, never ship the whole sheet
+  as the logo, and **never** auto-carve an icon substitute out of the wordmark
+  (the Tays standalone-`t.` bug). A logo box that slices a word mid-row is
+  snapped to designer intent: `selection._complete_row` extends it along the
+  baseline to the whole glyph run (the live `'ta'` bug — half a wordmark is
+  never what the CSR meant), then `_attach_punct` keeps the trailing period.
+  Auto/named icon detection applies only when **no** icon box was drawn (the
+  optional-icon convenience path).
 - **Multi-artboard:** convert every page; the CSR **must pick the primary logo**
   when >1. De-dup treatment-variants of one mark by geometry; suggest the most
   complete full-color lockup.

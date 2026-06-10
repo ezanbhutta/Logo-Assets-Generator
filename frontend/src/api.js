@@ -28,6 +28,11 @@ export async function generate(body) {
       err.reasons = detail.reasons || [];
       throw err;
     }
+    if (detail && detail.error === "box_miss") {
+      // A drawn box covers no artwork — the job is still alive; the CSR just
+      // adjusts the box and generates again.
+      throw new Error(detail.message || "A marked box doesn't cover any artwork — adjust it and try again.");
+    }
     throw new Error(
       typeof detail === "string" ? detail : `Generate failed (${res.status})`
     );

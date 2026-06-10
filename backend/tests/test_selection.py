@@ -295,20 +295,52 @@ def _bento_with_standalone_icon():
     return WorkingSVG.from_string(svg)
 
 
-def test_missed_icon_box_yields_no_icon_not_a_wordmark_slice():
-    """An explicit icon box that lands on empty space must produce NO icon — it
-    must never silently carve a mark out of the wordmark. That was the Tays bug:
-    the CSR boxed the standalone 't.' but a near/total miss made the engine ship
-    letters sliced from 'tays' as the icon instead of the icon they chose."""
+def test_missed_icon_box_refuses_never_carves_wordmark():
+    """An explicit icon box that lands on empty space must REFUSE loudly
+    (BoxMiss) — never silently carve a mark out of the wordmark (the old Tays
+    standalone-'t.' bug) and never silently ship a zip with the icon set
+    missing (the 'no icon' bug: the CSR selected an icon and got a logo-only
+    package with no explanation)."""
+    import pytest
     m = _bento_with_standalone_icon()
-    wordmark_ids = {n.lpid for n in m.ink_nodes
-                    if n.bbox and n.bbox[0] < 300 and n.area < 0.08 * 1000 * 600}
-    sel, include_icon = selection.select(
-        m, logo_box=(40, 40, 420, 310), icon_box=(450, 450, 100, 100))  # empty corner
-    assert include_icon is False                  # no icon, not a wrong one
-    assert sel.icon == []
-    assert wordmark_ids.isdisjoint(sel.icon)      # the wordmark was NOT carved up
-    assert len(sel.full) == 3                     # logo set intact
+    with pytest.raises(selection.BoxMiss) as e:
+        selection.select(m, logo_box=(40, 40, 420, 310),
+                         icon_box=(450, 450, 100, 100))   # empty corner
+    assert e.value.box == "icon"
+
+
+def test_missed_logo_box_refuses_never_ships_whole_sheet():
+    """An explicit logo box that covers nothing must refuse (BoxMiss) — the old
+    silent fallback shipped the ENTIRE brand sheet as the logo."""
+    import pytest
+    m = _bento_with_standalone_icon()
+    with pytest.raises(selection.BoxMiss) as e:
+        selection.select(m, logo_box=(460, 440, 60, 60), icon_box=None)
+    assert e.value.box == "logo"
+
+
+def test_partial_word_box_completes_the_row():
+    """A logo box that catches only part of a word selects the WHOLE word — the
+    live 'ta' bug, where a box ending mid-word shipped 'tays.' as 'ta'. Body
+    copy below (much smaller glyphs) and a standalone icon (much larger, far
+    away) must stay out; the trailing period rides in via attach-punct."""
+    from app.svg_model import WorkingSVG
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 400">'
+           '<rect x="156" y="158" width="20" height="38" fill="#111"/>'   # t
+           '<rect x="180" y="166" width="29" height="30" fill="#111"/>'   # a
+           '<rect x="212" y="167" width="30" height="42" fill="#111"/>'   # y (descender)
+           '<rect x="246" y="166" width="22" height="30" fill="#111"/>'   # s
+           '<rect x="271" y="189" width="7" height="7" fill="#111"/>'     # period
+           '<rect x="160" y="280" width="6" height="8" fill="#111"/>'     # body copy
+           '<rect x="170" y="280" width="6" height="8" fill="#111"/>'
+           '<rect x="600" y="130" width="58" height="110" fill="#111"/></svg>')  # standalone icon
+    m = WorkingSVG.from_string(svg)
+    # box ends mid-word: covers t and a, clips y at ~30% of its width
+    sel, _ = selection.select(m, logo_box=(150, 150, 70, 55), icon_box=None)
+    boxes = [m.by_lpid[i].bbox for i in sel.full]
+    assert len(sel.full) == 5                     # t a y s . — the whole word
+    assert all(b[2] <= 300 for b in boxes)        # icon (x600) NOT pulled in
+    assert all(b[3] <= 240 for b in boxes)        # body copy (y280) NOT pulled in
 
 
 def test_near_miss_icon_box_still_grabs_standalone_mark():

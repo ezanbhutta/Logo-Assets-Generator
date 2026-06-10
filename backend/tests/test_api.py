@@ -71,6 +71,26 @@ def test_generate_cleans_job_dir(solid_svg):
     assert not (WORK_ROOT / j["job_id"]).exists()    # temp dir removed (§2/§7.8)
 
 
+def test_generate_box_miss_is_422_and_keeps_job(solid_svg):
+    """A drawn box that covers no artwork returns a clear 422 AND keeps the job
+    alive, so the CSR adjusts the box and generates again — no silent logo-only
+    zip, no re-upload."""
+    from app.main import WORK_ROOT
+    j = _ingest(solid_svg).json()
+    g = client.post("/generate", json={
+        "job_id": j["job_id"], "brand": j["brand"],
+        "selection_box": [390, 5, 8, 8]})            # empty corner — covers nothing
+    assert g.status_code == 422
+    d = g.json()["detail"]
+    assert d["error"] == "box_miss" and d["box"] == "icon"
+    assert (WORK_ROOT / j["job_id"]).exists()        # job kept for the retry
+    # the retry with a corrected box succeeds on the SAME job
+    g2 = client.post("/generate", json={
+        "job_id": j["job_id"], "brand": j["brand"],
+        "selection_box": [10, 5, 150, 150]})
+    assert g2.status_code == 200
+
+
 def test_manual_flag_returns_422(oos_svg):
     j = _ingest(oos_svg, name="bad.svg").json()
     assert _primary(j)["supported"] is False
