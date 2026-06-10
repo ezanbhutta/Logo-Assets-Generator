@@ -207,6 +207,21 @@ def _covered(node, box) -> bool:
     return ox / nw >= 0.6 and oy / nh >= 0.3
 
 
+def _overlaps_box(node, box, frac: float = 0.3) -> bool:
+    """A looser test than ``_covered``: True when ``box`` covers at least ``frac``
+    of the node's area. Used only as a near-miss retry for an explicit icon box,
+    so a rectangle that clips most of a small standalone mark still selects it —
+    while a box drawn on empty space (overlapping nothing) still selects nothing."""
+    if box is None or node.bbox is None:
+        return False
+    x, y, w, h = box
+    bx0, by0, bx1, by1 = node.bbox
+    ox = max(0.0, min(bx1, x + w) - max(bx0, x))
+    oy = max(0.0, min(by1, y + h) - max(by0, y))
+    narea = max(1e-6, (bx1 - bx0) * (by1 - by0))
+    return (ox * oy) / narea >= frac
+
+
 def _attach_punct(pool: list, ids: list[str]) -> list[str]:
     """Pull a small, detached punctuation-like mark — a period, a sparkle-dot, an
     accent — into a box selection when it floats right against the selected glyphs
@@ -276,9 +291,17 @@ def select(model: WorkingSVG,
         # derived from the wordmark, shown on its own tile). Either way the icon
         # files come from exactly what the box covers.
         icon_ids = [n.lpid for n in pool if _covered(n, icon_box)]
+        if not icon_ids:
+            # Forgiving near-miss: a box that still overlaps a mark grabs it, so a
+            # slightly-loose rectangle around a small standalone icon selects it
+            # rather than nothing.
+            icon_ids = [n.lpid for n in pool if _overlaps_box(n, icon_box)]
         source = "box"
-        if not icon_ids:                   # box missed -> named/auto within the logo
-            icon_ids, source = _icon_fallback(model, logo_set)
+        # An explicit icon box that lands on no artwork yields NO icon. We never
+        # silently auto-carve one from the wordmark on a miss — that shipped a
+        # mark the CSR never chose (the standalone icon they boxed was discarded
+        # in favour of letters sliced out of the wordmark). An empty result is the
+        # honest signal to redraw the box.
     else:
         cand = _named_in(model, logo_set)
         if cand:
@@ -295,14 +318,6 @@ def _named_in(model: WorkingSVG, logo_set: set[str]) -> list[str]:
     if named is not None and named.icon:
         return [i for i in named.icon if i in logo_set]
     return []
-
-
-def _icon_fallback(model: WorkingSVG, logo_set: set[str]):
-    cand = _named_in(model, logo_set)
-    if cand:
-        return cand, "named-layers"
-    auto = [i for i in auto_icon(model).icon if i in logo_set]
-    return (auto, "auto") if auto else ([], "none")
 
 
 # --- integrated-lockup heuristic (§9) ---------------------------------------

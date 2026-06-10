@@ -161,6 +161,37 @@ def test_generate_uses_chosen_artboard(tmp_path):
     assert any("/Logo 01.jpg" in m for m in res.manifest)
 
 
+def test_masters_carry_only_the_selected_artboard(tmp_path):
+    """The delivered .ai/.eps must contain ONLY the artboard the CSR picked — not
+    every artboard in the source (§4, owner override). A 2-artboard source, with
+    artboard index 1 chosen, yields single-page masters."""
+    from pypdf import PdfReader
+    src = _two_artboard_ai(tmp_path)            # real 2-page PDF (== 2-artboard .ai)
+    assert len(PdfReader(str(src)).pages) == 2
+    eps = tmp_path / "src.eps"; eps.write_bytes(b"%!PS-Adobe-3.0 EPSF-3.0\n% all artboards\n")
+    summ = run_ingest(src, tmp_path)
+    res = run_generate(GenerateRequest(
+        brand="Multi", working_svg=summ.artboards[1].working_svg,
+        selection_box=None, ai_path=src, eps_path=eps, artboard_index=1), tmp_path)
+    root = res.zip_path.parent / "Multi Files"
+    ai_out = root / "Multi.ai"
+    assert len(PdfReader(str(ai_out)).pages) == 1           # one artboard, not two
+    assert "/PieceInfo" not in PdfReader(str(ai_out)).pages[0]   # native blob stripped
+    eps_out = (root / "Multi.eps").read_bytes()
+    assert eps_out[:4] == b"%!PS" and b"all artboards" not in eps_out  # re-rendered single board
+
+
+def test_single_artboard_source_passes_through_untouched(solid_svg, tmp_path):
+    """A single-artboard (or non-multipage) source is copied verbatim — there is
+    nothing to carve, and a native single .ai must stay byte-for-byte intact."""
+    ai = tmp_path / "x.ai"; ai_bytes = b"%PDF-1.5\n% one-artboard ai\n"; ai.write_bytes(ai_bytes)
+    eps = tmp_path / "x.eps"; eps_bytes = b"%!PS-Adobe-3.0 EPSF-3.0\nsolo\n"; eps.write_bytes(eps_bytes)
+    res = _generate(solid_svg, tmp_path, ai=ai, eps=eps)
+    root = res.zip_path.parent / "Acme Files"
+    assert (root / "Acme.ai").read_bytes() == ai_bytes     # untouched
+    assert (root / "Acme.eps").read_bytes() == eps_bytes
+
+
 def test_pdf_compatible_required(tmp_path):
     """A non-PDF .ai is rejected at ingest (§4)."""
     from app.ingest import ingest, IngestError

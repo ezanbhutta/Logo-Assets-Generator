@@ -143,6 +143,7 @@ class GenerateRequest:
     brand_b: str | None = None
     ai_path: Path | None = None
     eps_path: Path | None = None
+    artboard_index: int = 0               # which artboard the masters carry (§4)
 
 
 @dataclass
@@ -192,7 +193,7 @@ def run_generate(req: GenerateRequest, workdir: Path) -> GenerateResult:
             write_png_transparent(svg, builder.t_png / variant_filename(stem, t.index, "png"))
             write_pdf(svg, builder.t_pdf / variant_filename(stem, t.index, "pdf"))
 
-    builder.passthrough(req.ai_path, req.eps_path)
+    builder.passthrough(req.ai_path, req.eps_path, req.artboard_index)
     zip_path = workdir / f"{req.brand} Files.zip"
     builder.zip(zip_path)
 

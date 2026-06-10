@@ -3,10 +3,10 @@ pass-through `.ai`/`.eps`, and zip — top folder ``[Brand Name] Files``.
 """
 from __future__ import annotations
 
-import shutil
 import zipfile
 from pathlib import Path
 
+from . import masters
 from .config import root_folder_name, safe_brand
 
 
@@ -25,12 +25,14 @@ class PackageBuilder:
         for d in (self.jpg, self.pdf, self.svg, self.t_png, self.t_svg, self.t_pdf):
             d.mkdir(parents=True, exist_ok=True)
 
-    def passthrough(self, ai_path: Path | None, eps_path: Path | None) -> None:
-        """Copy uploaded `.ai`/`.eps` to root, untouched (§4, §8 rule 8)."""
-        if ai_path and ai_path.exists():
-            shutil.copy2(ai_path, self.root / f"{self.brand}.ai")
-        if eps_path and eps_path.exists():
-            shutil.copy2(eps_path, self.root / f"{self.brand}.eps")
+    def passthrough(self, ai_path: Path | None, eps_path: Path | None,
+                    artboard_index: int = 0) -> None:
+        """Emit the master `.ai`/`.eps` at root as a single artboard — only the
+        one the CSR picked as the primary logo (§4, owner override). A single-
+        artboard or non-PDF source is copied untouched."""
+        masters.emit_masters(ai_path, eps_path, artboard_index,
+                             self.root / f"{self.brand}.ai",
+                             self.root / f"{self.brand}.eps")
 
     def zip(self, out_path: Path) -> Path:
         with zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED) as zf:

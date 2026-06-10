@@ -164,6 +164,7 @@ def generate_endpoint(body: GenerateRequestBody):
         brand_b=body.brand_b,
         ai_path=ai_path if ai_path.exists() else None,
         eps_path=eps_path if eps_path.exists() else None,
+        artboard_index=body.artboard,
     )
 
     try:

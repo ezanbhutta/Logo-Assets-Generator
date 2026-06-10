@@ -281,6 +281,51 @@ def test_repeated_tiles_are_excluded_as_panels():
     assert len(sel.full) == 3                          # icon + 2 wordmark marks
 
 
+def _bento_with_standalone_icon():
+    """Brand-sheet: wordmark on its tile (left) + a standalone icon on its own
+    tile (right) — the Tays layout."""
+    from app.svg_model import WorkingSVG
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600">'
+           '<rect x="40"  y="40" width="400" height="300" fill="#fdf6ec"/>'   # wordmark tile
+           '<rect x="100" y="160" width="40" height="60" fill="#111"/>'       # wordmark (3)
+           '<rect x="160" y="160" width="40" height="60" fill="#111"/>'
+           '<rect x="220" y="160" width="40" height="60" fill="#111"/>'
+           '<rect x="560" y="40" width="400" height="300" fill="#fdf6ec"/>'   # icon tile
+           '<rect x="720" y="140" width="80" height="120" fill="#111"/></svg>')  # standalone icon
+    return WorkingSVG.from_string(svg)
+
+
+def test_missed_icon_box_yields_no_icon_not_a_wordmark_slice():
+    """An explicit icon box that lands on empty space must produce NO icon — it
+    must never silently carve a mark out of the wordmark. That was the Tays bug:
+    the CSR boxed the standalone 't.' but a near/total miss made the engine ship
+    letters sliced from 'tays' as the icon instead of the icon they chose."""
+    m = _bento_with_standalone_icon()
+    wordmark_ids = {n.lpid for n in m.ink_nodes
+                    if n.bbox and n.bbox[0] < 300 and n.area < 0.08 * 1000 * 600}
+    sel, include_icon = selection.select(
+        m, logo_box=(40, 40, 420, 310), icon_box=(450, 450, 100, 100))  # empty corner
+    assert include_icon is False                  # no icon, not a wrong one
+    assert sel.icon == []
+    assert wordmark_ids.isdisjoint(sel.icon)      # the wordmark was NOT carved up
+    assert len(sel.full) == 3                     # logo set intact
+
+
+def test_near_miss_icon_box_still_grabs_standalone_mark():
+    """A loosely-drawn icon box whose centre falls just off the small standalone
+    mark still selects it (forgiving overlap retry), rather than dropping to no
+    icon — so a slightly-imprecise drag around the 't.' still ships the icon."""
+    m = _bento_with_standalone_icon()
+    # box clips the left ~44% of the icon (720..800); its centre (≈760) sits
+    # outside the box, so plain centroid/coverage misses but overlap catches it.
+    sel, include_icon = selection.select(
+        m, logo_box=(40, 40, 420, 310), icon_box=(700, 140, 55, 120))
+    assert include_icon is True
+    assert len(sel.icon) == 1
+    icon_node = m.by_lpid[sel.icon[0]]
+    assert icon_node.bbox[0] >= 700             # it's the right-hand standalone mark
+
+
 def test_auto_segment_plain_wordmark_suggests_nothing():
     """Evenly-spaced letters with no emblem: never carve a letter out as a fake
     icon — return None and leave the normal flow alone."""

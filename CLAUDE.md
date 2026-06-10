@@ -29,7 +29,7 @@ logo delivery package as a `.zip`. Upload → zip out. No DB, no auth.
 - **Tree:**
   ```
   [Brand] Files/
-  ├─ [Brand].ai · [Brand].eps        ← pass-through, untouched, single masters at root
+  ├─ [Brand].ai · [Brand].eps        ← masters at root, ONLY the selected artboard
   ├─ JPEG/  Icon 01–05 · Logo 01–05  (3840×2160, with background)
   ├─ PDF/   Icon 01–05 · Logo 01–05  (vector, 1920×1080)
   ├─ SVG/   Icon 01–05 · Logo 01–05  (vector, 1920×1080)
@@ -73,7 +73,14 @@ darker brand color, brand-B = more vivid; for a 1-color logo brand-B → black.
 - **Out of scope → flag "manual," refuse** (no partial zip): mesh/freeform
   gradients, embedded raster `<image>`, filters/shadows, in-art transparency,
   spot colors, live (un-outlined) text, integrated lockups.
-- `.ai`/`.eps` are **pass-through only** — never recolor/regenerate them. RGB only.
+- `.ai`/`.eps` masters carry **only the selected artboard** (owner override of the
+  old "untouched pass-through"). Never recolor; RGB only. A PDF-compatible `.ai`
+  stores each artboard as a PDF page **and** a whole-document native (PGF) copy in
+  each page's `/PieceInfo`; `masters.py` extracts the chosen page and **strips that
+  native blob** so Adobe honors the single artboard (it rebuilds from the page's
+  editable vectors), and re-renders the `.eps` from the same page via `pdftops`.
+  Single-artboard or non-PDF sources are still copied **untouched** (a native single
+  `.ai` stays native — nothing to carve).
 
 ## Engine behaviors learned from real files (keep these)
 - **Source page background rect** (pdf2svg/Illustrator add one) is detected and
@@ -113,7 +120,13 @@ darker brand color, brand-B = more vivid; for a 1-color logo brand-B → black.
   lockup, not the tile rectangle. The **icon box is independent of the logo box**
   — it may mark a sub-region of the lockup or a standalone mark on its own tile
   (an icon derived from the wordmark), and the icon files come from exactly what
-  it covers.
+  it covers. An **explicitly-drawn icon box is authoritative**: it selects the
+  covered marks (with a forgiving overlap retry so a slightly-loose rectangle
+  around a small standalone mark still grabs it); if it lands on no artwork the
+  package ships **no icon** — the engine **never** auto-carves a substitute out
+  of the wordmark on a miss (that silently shipped letters the CSR never chose —
+  the Tays standalone-`t.` bug). Auto/named icon detection applies only when **no**
+  icon box was drawn (the optional-icon convenience path).
 - **Multi-artboard:** convert every page; the CSR **must pick the primary logo**
   when >1. De-dup treatment-variants of one mark by geometry; suggest the most
   complete full-color lockup.
