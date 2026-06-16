@@ -19,16 +19,27 @@ def test_gradient_classification(gradient_model):
     assert r.gradient_ids == ["flameGrad"]
 
 
-def test_one_color_brand_b_is_in_scheme_shade():
-    """A 1-color logo's alternate background stays IN the logo's scheme: a deep
-    shade of the brand color, not plain black (owner standard)."""
+def test_one_color_vivid_shows_brand_color_on_black():
+    """Designer standard (Snoot): a VIVID one-color mark reads on black, so its
+    alternate dark background is BLACK with the color kept (slot 3 = color-on-
+    black) — not a deep shade. brand-B becomes black so the adaptive guard keeps
+    the brand color there."""
     svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
            '<rect x="0" y="0" width="40" height="40" fill="#ec1c24"/></svg>')
     r = colors.detect(WorkingSVG.from_string(svg))
     assert r.brand_a == "#ec1c24"
-    assert r.brand_b not in ("#000000", "#ec1c24")    # a shade, not black/itself
-    rr, gg, bb = (int(r.brand_b[i:i + 2], 16) for i in (1, 3, 5))
-    assert rr > gg and rr > bb                         # still red-family (in-scheme)
+    assert r.brand_b == "#000000"                      # color-on-black variation
+    assert colors.contrast_ratio("#ec1c24", "#000000") >= 3.0   # red reads on black
+
+
+def test_one_color_dark_keeps_shade_fallback():
+    """A DARK one-color mark won't read on black, so it keeps the in-scheme deep
+    shade as its alternate background (white reads there)."""
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
+           '<rect x="0" y="0" width="40" height="40" fill="#0b1f3a"/></svg>')  # dark navy
+    r = colors.detect(WorkingSVG.from_string(svg))
+    assert r.brand_a == "#0b1f3a"
+    assert r.brand_b not in ("#000000", "#0b1f3a")     # a shade, not black/itself
     assert colors.contrast_ratio("#ffffff", r.brand_b) >= 4.5   # white reads on it
 
 

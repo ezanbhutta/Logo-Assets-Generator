@@ -265,10 +265,17 @@ def _rank_brand_colors(nodes: list[PathNode],
             return solids, mix_hex(base, config.BLACK, 0.75), mix_hex(base, config.BLACK, 0.45)
         return solids, mix_hex(base, config.WHITE, 0.28), mix_hex(base, config.WHITE, 0.85)
     if len(candidates) == 1:
-        # 1-color logo: brand-B = a deep shade of the brand color, so the
-        # alternate background stays in the logo's own scheme (owner standard;
-        # previously plain black).
-        return solids, candidates[0], shade_of(candidates[0])
+        # 1-color logo. Designer standard (Snoot, validated in REFERENCE_STUDY):
+        # a VIVID one-color mark is shown ON BLACK in its own color — the color
+        # reads on black and it's a striking in-scheme variation, far better than
+        # a redundant deep-shade slot. So brand-B = black: the adaptive guard
+        # keeps the brand color on that black background (slot 3 = color-on-black,
+        # slot 5 = white-on-black mono — Snoot's exact set). A DARK one-color mark
+        # (won't read on black) keeps the deep-shade fallback instead.
+        c = candidates[0]
+        if contrast_ratio(c, config.BLACK) >= 3.0:
+            return solids, c, config.BLACK
+        return solids, c, shade_of(c)
 
     top2 = candidates[:2]
     # brand-A = the darker; brand-B = the more vivid/primary.

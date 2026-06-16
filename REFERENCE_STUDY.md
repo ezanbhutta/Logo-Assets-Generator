@@ -130,3 +130,66 @@ The architecture is sound. The data calls for **calibration + 2 corrections**:
   truly auto-generatable from the logo, and appears as its own deliverable
   (Sawaat). Everything else (guidelines, fonts, iconography) is human-authored
   and stays out. [needs owner OK on scope]
+
+---
+
+# Color recoloring across backgrounds — the moves (guidelines + web research)
+
+Studied the three real brand-guideline documents shipped in the packages
+(**Pulse**, **Snoot**, **Zytress** — 94 pages), the delivered variation sets of
+6 brands, and ~12 web sources on professional brand-guideline practice
+(logome.ai, frontify, brandyhq, deBroome, Case Western, JHU, UConn, IxDF, et al.).
+The rules converge. The headline: **a logo on a colored background is NOT
+reflexively white or black — designers recolor it to the brand's OWN color that
+reads best, and only fall back to white/black.**
+
+## The decision a designer actually makes (the one rule)
+For any background, pick the mark color that **reads best while staying in the
+brand's scheme**, in this priority:
+1. **Keep the mark's real colors** if they read on the background (contrast ≥ ~3:1
+   for a graphic — WCAG). Multi-color marks stay full-color on brand backgrounds
+   where the colors survive (Zytress shield on navy AND cyan; Pulse dots on navy).
+2. **Swap a failing color to another BRAND color that reads** — in-scheme, never
+   white-by-default. *MpCarney: on the gold background the mark becomes NAVY (the
+   other brand color), not white.* *deBroome/Case Western: "favor the primary or
+   secondary palette; determine which color is best for contrast."*
+3. **White or black, last** — white on dark/saturated, black on light. ("Navy is
+   changed to white on dark backgrounds.")
+4. **Never tone-on-tone** — never a color on a too-similar color (the forbidden
+   move in every guideline).
+
+## The background palette designers pull from (not just white/black)
+white · the **dark brand color** · the **vivid brand color** · **tints** of a
+brand color (a lighter dilution, used when it raises contrast) · black. The mark
+is recolored per the rule above for each.
+
+## Per-archetype moves (from the delivered sets, validated visually)
+- **Multi-color (Pulse, Zytress):** full-color on white · **full-color KEPT on the
+  dark brand color** (only the wordmark goes white) · white knockout on the vivid
+  brand color · mono black · mono white.
+- **Two-color (Fire, MpCarney):** full on white · the mark recolored to the OTHER
+  brand color on a brand background (Fire: split, icon keeps red / wordmark white
+  on navy; MpCarney: **navy mark on the gold background**) · white on the vivid ·
+  mono pair.
+- **One-color (Snoot, vivid red):** red on white · **white knockout on the brand
+  red** · **the red KEPT on BLACK** (a vivid color reads on black — a striking
+  in-scheme variation) · mono white on black · mono black on white.
+- **Gradient (Orova):** full gradient on white · white knockout on the rebuilt
+  full-bleed gradient (hero) · white on black · black mono on white · white on the
+  darkest-stop solid.
+
+## How the engine maps (audit)
+The engine's adaptive contrast guard implements rule 1–4 already: keep colors
+that read, substitute to the nearest reading PALETTE color, white/black last,
+never tone-on-tone. Validated: MpCarney-style navy-on-gold, Zytress multicolor
+kept on two brand backgrounds. **One gap from the research:** a vivid one-color
+brand should show its color **on black** (Snoot's red-on-black). The engine
+previously used a deep shade background with white — a redundant, less striking
+slot. Fixed: a one-color mark that reads on black now gets the **brand color on
+black** variation; a dark one-color mark (won't read on black) keeps the shade.
+
+## Sources
+Local: Pulse/Snoot/Zytress brand guideline PDFs (shipped in the packages). Web:
+logome.ai (logo variations), frontify & brandyhq (logo usage playbooks), deBroome
+(brand color best-practices), Case Western / Johns Hopkins / UConn brand systems,
+Interaction Design Foundation (brand guidelines). All converge on the rule above.
