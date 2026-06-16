@@ -217,9 +217,11 @@ def test_logo_placement_60pct_of_1920x1080(solid_model):
     assert abs((min(ys) + max(ys)) / 2 - CANVAS_H / 2) <= 8
 
 
-def test_icon_artboard_is_1080_square_at_60pct(solid_model):
+def test_icon_artboard_is_1080_square_at_42pct(solid_model):
     """LOCKED: icon artboard 1080x1080 SQUARE; the icon scales proportionally
-    (no stretch/skew) so its longest side spans 60% of the artboard, centered."""
+    (no stretch/skew) so its longest side spans ~42% of the artboard (icons sit
+    smaller than logos — the reference standard, Pulse=44%), centered."""
+    from app.config import ICON_SAFE_FRACTION
     ctx, _ = _ctx(solid_model)
     svg = treatments.render_variant(ctx, "icon", SOLID_ICON[0], True)
     assert 'viewBox="0 0 1080 1080"' in svg and 'width="1080"' in svg and 'height="1080"' in svg
@@ -231,8 +233,8 @@ def test_icon_artboard_is_1080_square_at_60pct(solid_model):
     assert ink
     xs, ys = [p[0] for p in ink], [p[1] for p in ink]
     w, h = max(xs) - min(xs), max(ys) - min(ys)
-    # longest side ~60% of 1080 = 648 (sampling stride costs a couple px)
-    assert 0.57 <= max(w, h) / 1080 <= 0.61
+    # longest side ~42% of 1080 = 454 (sampling stride costs a couple px)
+    assert abs(max(w, h) / 1080 - ICON_SAFE_FRACTION) <= 0.025
     # proportional: the flame's aspect ratio matches its source aspect (no skew)
     fx0, fy0, fx1, fy1 = ctx.model.overall_bbox(ctx.selection.icon)
     src_aspect = (fx1 - fx0) / (fy1 - fy0)
@@ -263,12 +265,15 @@ def test_adaptive_substitutes_in_palette_not_white():
     assert "#ffffff" not in out                       # no out-of-scheme white introduced
 
 
-def test_gradient_kept_on_black_when_it_reads(gradient_model):
-    """§6.4/03 adaptive — a vivid gradient mark GLOWS on black, so it keeps its
-    gradient there (in-scheme); only the unreadable navy wordmark lifts to
-    white. No more blanket all-white on black."""
+def test_gradient_on_black_is_white_knockout(gradient_model):
+    """§6.4/03 — the designer standard (Orova): a gradient's tone shifts across
+    the mark, so on black it goes WHITE knockout, not the gradient. Logo 03 must
+    carry no gradient ref and read as solid white on black."""
     sel = selection.select_by_box(gradient_model, ICON_BOX)
     rep = colors.detect(gradient_model)
     ctx = treatments.build_context(gradient_model, sel, rep)
     svg = treatments.render_variant(ctx, "logo", GRADIENT_LOGO[2], True)  # black bg
-    assert "url(#flameGrad)" in svg                   # gradient survives on black
+    assert "url(#flameGrad)" not in svg               # gradient NOT kept on black
+    img = render(svg).convert("RGB")
+    whites = sum(near(img.getpixel((x, MID)), (255, 255, 255)) for x in range(0, CANVAS_W, 4))
+    assert whites > 0                                 # white knockout present on black

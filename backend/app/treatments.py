@@ -21,7 +21,7 @@ from lxml import etree
 from PIL import Image
 
 from . import config
-from .config import (SAFE_FRACTION, canvas_for, SVG_NS, XLINK_NS, LPID_ATTR)
+from .config import (canvas_for, safe_fraction_for, SVG_NS, XLINK_NS, LPID_ATTR)
 from .colors import (normalize_hex, contrast_ratio, best_knockout,
                      best_substitute, designer_knockout, gradient_ref, mix_hex,
                      saturation)
@@ -385,12 +385,14 @@ def _render_with_bg(ctx: TreatmentContext, vroot: etree._Element, art: BBox,
 
 def _placement_scale(art: BBox, mark: str) -> float:
     """Uniform scale (proportional — never stretched or skewed) so the mark's
-    binding side spans exactly SAFE_FRACTION (60%) of its artboard: 1920x1080
-    for the logo, 1080x1080 for the icon. Centered = balanced."""
+    binding side spans its artboard's safe fraction: the LOGO 60% of 1920x1080,
+    the ICON 42% of 1080x1080 (icons sit smaller — the reference standard).
+    Centered = balanced."""
     W, H = canvas_for(mark)
+    frac = safe_fraction_for(mark)
     ax0, ay0, ax1, ay1 = art
     aw, ah = max(ax1 - ax0, 1e-6), max(ay1 - ay0, 1e-6)
-    return min(SAFE_FRACTION * W / aw, SAFE_FRACTION * H / ah)
+    return min(frac * W / aw, frac * H / ah)
 
 
 def _render_transparent(ctx: TreatmentContext, vroot: etree._Element, art: BBox) -> str:

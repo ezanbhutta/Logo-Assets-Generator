@@ -225,11 +225,14 @@ def _style_val(style: str, prop: str) -> str | None:
 
 # --- brand ranking (§6.1) ----------------------------------------------------
 def _rank_brand_colors(nodes: list[PathNode],
-                       exclude: set[str] | None = None) -> tuple[list[str], str, str]:
+                       exclude: set[str] | None = None,
+                       extra: dict[str, float] | None = None) -> tuple[list[str], str, str]:
     """Return (prominence-ordered distinct solids, brand_a, brand_b).
 
     `exclude` = colors the CSR removed as strays (e.g. an off-black artifact);
-    they're dropped from brand ranking so they never drive a background (§3.5)."""
+    they're dropped from brand ranking so they never drive a background (§3.5).
+    `extra` = additional weighted colors (the gradient stops — so a gradient
+    mark's hues become brand colors instead of the gray outline/text winning)."""
     exclude = {e.lower() for e in (exclude or set())}
     weight: dict[str, float] = {}
     order: list[str] = []
@@ -242,6 +245,11 @@ def _rank_brand_colors(nodes: list[PathNode],
             order.append(hx)
         # prominence = total area, with a floor so zero-area shapes still count.
         weight[hx] += max(n.area, 1.0)
+    for hx, w in (extra or {}).items():
+        if hx not in weight:
+            weight[hx] = 0.0
+            order.append(hx)
+        weight[hx] += w
 
     solids = sorted(order, key=lambda h: weight[h], reverse=True)
     candidates = [h for h in solids if _is_brand_color(h) and h not in exclude]
@@ -282,13 +290,27 @@ def detect(model: WorkingSVG, lpids: list[str] | None = None,
     let the confirm UI lock the palette explicitly."""
     nodes = model.ink_nodes if lpids is None else [model.by_lpid[i] for i in lpids if i in model.by_lpid]
 
+    defs = model.gradient_defs()
     grad_ids: list[str] = []
+    grad_weights: dict[str, float] = {}        # gradient stop hues -> brand-color weight
     for n in nodes:
         gid = gradient_ref(n.fill)
-        if gid and gid in model.gradient_defs() and gid not in grad_ids:
+        if not gid or gid not in defs:
+            continue
+        if gid not in grad_ids:
             grad_ids.append(gid)
+        # Fold the gradient's stop colors into brand ranking, weighted by the
+        # filled node's area, so a gradient mark's real hues (e.g. Orova's
+        # magenta->purple) drive brand-A/brand-B — not the gray outline/text.
+        from .gradients import parse_gradient
+        stops = [hx for _, c, _ in parse_gradient(defs[gid], defs).stops
+                 if (hx := normalize_hex(c))]
+        if stops:
+            w = max(n.area, 1.0) / len(stops)
+            for hx in stops:
+                grad_weights[hx] = grad_weights.get(hx, 0.0) + w
 
-    solids, brand_a, brand_b = _rank_brand_colors(nodes, exclude)
+    solids, brand_a, brand_b = _rank_brand_colors(nodes, exclude, extra=grad_weights)
     brand_a = normalize_hex(brand_a_override) or brand_a
     brand_b = normalize_hex(brand_b_override) or brand_b
     reasons = _scope_reasons(model)

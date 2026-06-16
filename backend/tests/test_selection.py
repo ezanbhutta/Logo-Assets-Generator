@@ -358,6 +358,28 @@ def test_near_miss_icon_box_still_grabs_standalone_mark():
     assert icon_node.bbox[0] >= 700             # it's the right-hand standalone mark
 
 
+def test_auto_segment_detects_stacked_emblem_icon():
+    """A combination mark with the symbol STACKED above the wordmark (a gear/
+    shield over the name — the Orova case) must auto-detect the symbol as the
+    icon. The old end-emblem scan was horizontal-only and shipped no icon."""
+    from app.svg_model import WorkingSVG
+    parts = ['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">']
+    parts.append('<rect x="170" y="40" width="60" height="60" fill="#7229ff"/>')   # square emblem on top
+    # wordmark row below: thin, varied glyph-like marks (not uniform blocks, so
+    # they read as letters, not a swatch row)
+    for x, w in [(96, 12), (116, 22), (146, 14), (166, 24), (196, 12), (214, 22), (244, 14)]:
+        parts.append(f'<rect x="{x}" y="180" width="{w}" height="36" fill="#160a33"/>')
+    parts.append('</svg>')
+    m = WorkingSVG.from_string("".join(parts))
+    seg = selection.auto_segment(m)
+    assert seg is not None and seg.icon_box is not None
+    # the icon box covers the top emblem, not a letter
+    ix, iy, iw, ih = seg.icon_box
+    assert iy < 120 and 0.8 <= iw / ih <= 1.25       # square, in the top band
+    sel, inc = selection.select(m, logo_box=None, icon_box=tuple(seg.icon_box))
+    assert inc is True and len(sel.icon) == 1         # the emblem only
+
+
 def test_auto_segment_plain_wordmark_suggests_nothing():
     """Evenly-spaced letters with no emblem: never carve a letter out as a fake
     icon — return None and leave the normal flow alone."""

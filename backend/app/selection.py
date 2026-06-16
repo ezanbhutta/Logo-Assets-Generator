@@ -538,8 +538,10 @@ def _aligned(a, b) -> bool:
 def _lockup_icon(model: WorkingSVG, lockup: list, lock_clusters: list):
     """Find an emblem inside the assembled lockup. If the lockup is several
     pieces, the most-square piece is the icon. If it's one fused row, the icon is
-    a compact, SQUARE, full-height mark set apart at one end (a leaf before a
-    wordmark) — never a slice of the letters. Returns the icon nodes, or None."""
+    a compact, SQUARE, full-height mark set apart from the wordmark — at one end
+    (a leaf before a wordmark) OR stacked above/below it (a gear over the name,
+    a shield over the name) — never a slice of the letters. Returns the icon
+    nodes, or None."""
     if len(lock_clusters) >= 2:
         icon = max(lock_clusters, key=lambda c: _squareness(model, c))
         word = [n for c in lock_clusters if c is not icon for n in c]
@@ -570,6 +572,17 @@ def _lockup_icon(model: WorkingSVG, lockup: list, lock_clusters: list):
             continue
         if _is_plausible_icon(model, lockup, grp, rest, part / max(med_gap, 1e-6)):
             return grp
+
+    # Stacked emblem: a symbol set apart ABOVE/BELOW the wordmark row (Orova's
+    # gear over the name). The end-emblem scan above is horizontal-only and misses
+    # it. Split at the largest gap on the best axis and keep it only if the icon
+    # side is a genuinely square mark, clearly parted from a real wordmark row.
+    icon_grp, word_grp, sep = _largest_gap_split(model, lockup)
+    if (icon_grp and word_grp and len(word_grp) >= 3
+            and _squareness(model, icon_grp) >= 0.7
+            and _wordmark_score(word_grp) > 0
+            and _is_plausible_icon(model, lockup, icon_grp, word_grp, sep)):
+        return icon_grp
     return None
 
 

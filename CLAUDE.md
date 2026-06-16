@@ -35,10 +35,12 @@ logo delivery package as a `.zip`. Upload → zip out. No DB, no auth.
   **1920×1080** (`viewBox 0 0 1920 1080`; JPEG @2× = 3840×2160). Every
   with-background **ICON** format = fixed **1080×1080 SQUARE**
   (`viewBox 0 0 1080 1080`; JPEG @2× = 2160×2160). The mark is **proportionally**
-  scaled — never stretched or skewed — so its binding side spans **60%**
-  (`SAFE_FRACTION`) of the artboard, centered (balanced) on its visible bbox.
-  JPEG dimensions derive from each variant's own artboard (`exporters.write_jpg`
-  reads the viewBox — forcing one size would skew the square icons).
+  scaled — never stretched or skewed — centered (balanced) on its visible bbox.
+  Binding side: **LOGO 60%** (`SAFE_FRACTION`; references 50–65%), **ICON 42%**
+  (`ICON_SAFE_FRACTION`; references 29–44%, Pulse 44% — icons sit smaller than
+  logos, validated in `REFERENCE_STUDY.md`). JPEG dimensions derive from each
+  variant's own artboard (`exporters.write_jpg` reads the viewBox — forcing one
+  size would skew the square icons).
 - **Folder named `JPEG`** (client-facing term; file extension stays `.jpg`).
 - **Naming:** `Icon 01 … Icon 05`, `Logo 01 … Logo 05` — **zero-padded two
   digits, space before the number.** Root folder `[Brand Name] Files`.
@@ -77,9 +79,11 @@ mark keeps its true ink — never three identical black slots.
 - **Solid Logo & Icon 01–05:** white/full · brand-A/**adaptive** ·
   brand-B/**adaptive** · white/all-black (mono) · black/all-white (mono).
 - **Gradient Logo/Icon:** 01 white/full · 02 **white knockout on a rebuilt
-  full-bleed gradient** (hero) · 03 black/**adaptive** (the gradient is KEPT on
-  black when its tone reads — a vivid gradient glows there; swapped to a readable
-  solid when it would vanish) · 04 white/black · 05 dark-stop-solid/white.
+  full-bleed gradient** (hero) · 03 **black/white knockout** (the designer
+  standard — Orova; a gradient's tone shifts across the mark, so only white reads
+  cleanly on black) · 04 white/black · 05 dark-stop-solid/white. Gradient stop
+  colors are folded into brand ranking (`colors.detect`) so brand-A/brand-B
+  reflect the real hues, not a gray outline.
 - **Transparent Logo 01–04:** full · split · white · black. **Icon 01–03:** full · white · black.
 
 ### Adaptive recolor (the designer engine — `treatments._ensure_contrast`)
@@ -125,7 +129,7 @@ handles wordmarks, combination marks, multi-color mascots, and gradient marks.
 - **Source page background rect** (pdf2svg/Illustrator add one) is detected and
   **excluded** from artwork (bbox/selection/colors/output) so the logo isn't
   tiny/off-center and colors aren't polluted. Never flag everything as bg.
-- **Placement:** the mark's binding side spans 60% of its artboard (logo
+- **Placement:** binding side = **60% logo / 42% icon** of its artboard (logo
   1920×1080, icon 1080×1080), proportional, centered on the **visible
   (rendered) bbox** (robust to invisible/fill:none guides).
 - **Icon auto-extraction** (`selection.auto_icon`) when a box misses: split the
@@ -139,9 +143,13 @@ handles wordmarks, combination marks, multi-color mascots, and gradient marks.
   lockup** = richest cluster + nearby *aligned* pieces (rescues a symbol that
   split off the wordmark), while far-off duplicates/strays stay out; mark the
   icon = the set-apart square sub-region (only when convincing — never carves a
-  letter out of plain text). Handles the **bento/brand-sheet** case (logo +
-  standalone icon + swatches + variations on one artboard) and the *icon-derived-
-  from-wordmark* case. It is a **suggestion only** — the CSR reviews/adjusts the
+  letter out of plain text). The icon may be set apart **horizontally** (a leaf
+  before a wordmark) OR **stacked above/below** it (`_lockup_icon` splits on the
+  best axis — a gear/shield over the name is detected, the Orova combination-mark
+  case that previously shipped no icon). Handles the **bento/brand-sheet** case
+  (logo + standalone icon + swatches + variations on one artboard), the *icon-
+  derived-from-wordmark* case, and the plain **combination mark** (symbol +
+  wordmark). It is a **suggestion only** — the CSR reviews/adjusts the
   two boxes; nothing ships on auto-detection alone. Returns `None` (normal flow)
   for a plain single wordmark.
 - **pdf2svg quirks:** colors come as `rgb(%, %, %)` (normalize before luminance,

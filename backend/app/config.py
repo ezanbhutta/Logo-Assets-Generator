@@ -11,9 +11,16 @@ import re
 CANVAS_W = 1920
 CANVAS_H = 1080
 ICON_CANVAS = 1080
-# The mark occupies 60% of the artboard: its binding side scales to exactly
-# 60% of the corresponding canvas dimension, the other side proportional.
+# The LOGO's binding side scales to 60% of the artboard (references: 50-65%).
+# The ICON sits smaller — references (incl. Pulse, the house brand, at 44%) put
+# it at 29-44%; 42% matches the most generous one and reads as a refined mark,
+# never cramped. Centered (balanced) on the visible bbox either way.
 SAFE_FRACTION = 0.60
+ICON_SAFE_FRACTION = 0.42
+
+
+def safe_fraction_for(mark: str) -> float:
+    return ICON_SAFE_FRACTION if mark == "icon" else SAFE_FRACTION
 
 
 def canvas_for(mark: str) -> tuple[int, int]:

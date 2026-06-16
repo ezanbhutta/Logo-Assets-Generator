@@ -60,12 +60,12 @@ SOLID_ICON = [
 
 # --- §6.4 GRADIENT logo, with background ------------------------------------
 # White knockout is the FIXED treatment on the gradient background (§8 rule 5).
-# On black the gradient is kept when its tone reads (a vivid gradient glows on
-# black); the guard swaps it to a readable solid when it would vanish.
+# On black the mark goes WHITE — the designer standard (Orova): a gradient's tone
+# shifts across the mark, so only white reads cleanly on black.
 GRADIENT_LOGO = [
     Treatment(1, "white", "full"),
     Treatment(2, "gradient", "white"),   # hero: white knockout on full-bleed gradient
-    Treatment(3, "black", "full"),       # adaptive: gradient kept on black if it reads
+    Treatment(3, "black", "white"),      # white knockout on black (Orova standard)
     Treatment(4, "white", "black"),
     Treatment(5, "dark_stop", "white"),
 ]
@@ -74,7 +74,7 @@ GRADIENT_LOGO = [
 GRADIENT_ICON = [
     Treatment(1, "white", "full"),
     Treatment(2, "gradient", "white"),
-    Treatment(3, "black", "full"),
+    Treatment(3, "black", "white"),
     Treatment(4, "white", "black"),
     Treatment(5, "dark_stop", "white"),
 ]
