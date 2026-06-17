@@ -77,7 +77,12 @@ shade of the brand color** (`colors.shade_of`, in-scheme — not plain black). A
 scale instead: brand-A = a charcoal tint, brand-B = a light gray on which the
 mark keeps its true ink — never three identical black slots.
 - **Solid Logo & Icon 01–05:** white/full · brand-A/**adaptive** ·
-  brand-B/**adaptive** · white/all-black (mono) · black/all-white (mono).
+  brand-B/**adaptive** · **tint**/all-black (mono) · black/all-white (mono). The
+  mono-black slot sits on a soft **in-scheme tint** (`colors.brand_tint` — a pale
+  wash of the most vivid color) **only when the brand is all-dark** (no naturally
+  light color); brands with a light color (MpCarney's gold) or a single color
+  keep plain white there. Gives an all-dark brand a light *branded* background
+  instead of a redundant second white (`tint` → white when none).
 - **Gradient Logo/Icon:** 01 white/full · 02 **white knockout on a rebuilt
   full-bleed gradient** (hero) · 03 **black/white knockout** (the designer
   standard — Orova; a gradient's tone shifts across the mark, so only white reads

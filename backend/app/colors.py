@@ -143,6 +143,31 @@ def _is_brand_color(hex_color: str) -> bool:
     return saturation(hex_color) >= _NEUTRAL_SAT and luminance(hex_color) < config.NEAR_WHITE_LUMINANCE
 
 
+def brand_tint(chromatic: list[str]) -> str | None:
+    """A soft, pale in-scheme background — a light tint (≈10% color in white) of
+    the brand's most vivid color — for the mono-black slot.
+
+    Designers show the logo on a light BRANDED background, not only plain white
+    (the research). When a brand has a naturally-light color (MpCarney's gold)
+    that already supplies the light branded background, so this returns None and
+    the slot stays white. It also returns None for a one-color or neutral mark
+    (those sets are already rich). It only fires when the brand is **all dark**
+    (≥2 dark chromatic colors) — exactly the case where the package otherwise has
+    two redundant plain-white slots. The mono-black mark reads with high contrast
+    on the tint."""
+    # A brand color counts as a light branded background when a DARK mark reads
+    # on it — i.e. above the white/black crossover (~0.30 luminance, where the
+    # engine already prefers a dark knockout). MpCarney's gold (≈0.42) qualifies;
+    # navy/red/blue do not, so an all-dark brand gets the tint.
+    if len(chromatic) < 2 or any(luminance(c) >= 0.32 for c in chromatic):
+        return None
+    primary = max(chromatic, key=saturation)        # most vivid -> recognizable wash
+    tint = mix_hex(primary, config.WHITE, 0.90)
+    if contrast_ratio(config.BLACK, tint) < 4.5:     # guarantee the black mark reads
+        tint = mix_hex(primary, config.WHITE, 0.93)
+    return tint
+
+
 # --- detection report --------------------------------------------------------
 @dataclass
 class ColorReport:
@@ -152,6 +177,7 @@ class ColorReport:
     gradient_ids: list[str] = field(default_factory=list)
     brand_a: str = config.BLACK
     brand_b: str = config.BLACK
+    tint: str | None = None             # soft in-scheme tint bg (None -> use white)
     swatches: list[dict] = field(default_factory=list)    # for the confirm UI
 
     @property
@@ -322,6 +348,13 @@ def detect(model: WorkingSVG, lpids: list[str] | None = None,
     brand_b = normalize_hex(brand_b_override) or brand_b
     reasons = _scope_reasons(model)
 
+    # Soft in-scheme tint for the mono-black slot when the brand is all-dark (so
+    # the package gains a light BRANDED background instead of a second plain
+    # white). None -> the slot stays white (light-color / 1-color / neutral brands).
+    excl = {e.lower() for e in (exclude or set())}
+    chromatic = [h for h in solids if _is_brand_color(h) and h not in excl]
+    tint = brand_tint(chromatic)
+
     if reasons:
         classification = "manual"
     elif grad_ids:
@@ -346,5 +379,6 @@ def detect(model: WorkingSVG, lpids: list[str] | None = None,
         gradient_ids=grad_ids,
         brand_a=brand_a,
         brand_b=brand_b,
+        tint=tint,
         swatches=swatches,
     )

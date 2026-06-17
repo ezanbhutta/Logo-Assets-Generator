@@ -45,7 +45,7 @@ SOLID_LOGO = [
     Treatment(1, "white", "full"),
     Treatment(2, "brand_a", "full"),    # adaptive on the dark brand color
     Treatment(3, "brand_b", "full"),    # adaptive on the vivid brand color
-    Treatment(4, "white", "black"),     # mono black
+    Treatment(4, "tint", "black"),      # mono black on a soft in-scheme tint (white if none)
     Treatment(5, "black", "white"),     # mono white (reversed)
 ]
 
@@ -54,7 +54,7 @@ SOLID_ICON = [
     Treatment(1, "white", "full"),
     Treatment(2, "brand_a", "full"),
     Treatment(3, "brand_b", "full"),
-    Treatment(4, "white", "black"),
+    Treatment(4, "tint", "black"),
     Treatment(5, "black", "white"),
 ]
 

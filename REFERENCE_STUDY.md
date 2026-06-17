@@ -193,3 +193,18 @@ Local: Pulse/Snoot/Zytress brand guideline PDFs (shipped in the packages). Web:
 logome.ai (logo variations), frontify & brandyhq (logo usage playbooks), deBroome
 (brand color best-practices), Case Western / Johns Hopkins / UConn brand systems,
 Interaction Design Foundation (brand guidelines). All converge on the rule above.
+
+## Tint backgrounds (implemented)
+Measured the actual background colors of all delivered 5-slot sets. The standard
+is white · dark-brand · vivid-brand · white · black — and a **tint background
+appears only as a NATURALLY light brand color** (MpCarney's gold `#dda51e`, with
+the dark mark on it), which the engine already uses. Designers do **not** invent
+diluted tints when a brand is all-dark; they use white. The one place that leaves
+a gap: an **all-dark** brand (Fire navy+red, Pulse navy+blue) gets **two plain
+white slots** (full-color + mono-black) — a redundancy. So the mono-black slot
+now uses a soft **in-scheme tint** (`colors.brand_tint`: ≈10% of the most vivid
+color in white) when, and only when, the brand has **no color lighter than ~0.32
+luminance** (the white/black knockout crossover). Result: the all-dark brand gains
+a light *branded* background (a black logo on a soft blush/wash), the mono-black
+treatment is unchanged, and brands with a light color (MpCarney) or a single color
+(Snoot) are untouched — proven sets stay proven.

@@ -32,6 +32,38 @@ def test_one_color_vivid_shows_brand_color_on_black():
     assert colors.contrast_ratio("#ec1c24", "#000000") >= 3.0   # red reads on black
 
 
+def test_tint_background_for_all_dark_brand():
+    """An all-dark brand (no naturally-light color) gets a soft in-scheme TINT for
+    the mono-black slot — a light BRANDED background instead of a redundant second
+    plain white. The tint is a pale wash of the most vivid color; black reads on it."""
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100">'
+           '<rect width="60" height="60" fill="#ec1c24"/>'           # red (vivid, dark)
+           '<rect x="70" width="60" height="60" fill="#112630"/></svg>')  # navy (dark)
+    r = colors.detect(WorkingSVG.from_string(svg))
+    assert r.tint is not None
+    assert colors.luminance(r.tint) > 0.82                     # a pale wash
+    assert colors.saturation(r.tint) > 0.02                    # still tinted (in-scheme), not white
+    assert colors.contrast_ratio("#000000", r.tint) >= 4.5     # the black mark reads
+
+
+def test_no_tint_when_brand_has_a_light_color():
+    """A brand with a naturally-light color (MpCarney's gold ≈0.42 luminance)
+    already supplies a light branded background, so no tint is derived — the
+    mono-black slot stays plain white (proven cases untouched)."""
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100">'
+           '<rect width="60" height="60" fill="#dda51e"/>'           # gold (light)
+           '<rect x="70" width="60" height="60" fill="#0a1622"/></svg>')  # near-black navy
+    r = colors.detect(WorkingSVG.from_string(svg))
+    assert r.tint is None
+
+
+def test_no_tint_for_one_color_brand():
+    """A single-color brand's set is already rich (color-on-black), so no tint."""
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
+           '<rect width="40" height="40" fill="#ec1c24"/></svg>')
+    assert colors.detect(WorkingSVG.from_string(svg)).tint is None
+
+
 def test_one_color_dark_keeps_shade_fallback():
     """A DARK one-color mark won't read on black, so it keeps the in-scheme deep
     shade as its alternate background (white reads there)."""

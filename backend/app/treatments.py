@@ -309,6 +309,10 @@ def _resolve_bg(ctx: TreatmentContext, symbolic: str) -> tuple[str, object]:
         return "solid", r.brand_a
     if symbolic == "brand_b":
         return "solid", r.brand_b
+    if symbolic == "tint":
+        # Soft in-scheme tint for the mono-black slot; plain white when the brand
+        # already has a light color or is single-color (getattr -> back-compat).
+        return "solid", getattr(r, "tint", None) or config.WHITE
     if symbolic == "dark_stop":
         return "solid", ctx.grad_spec.darkest_stop() if ctx.grad_spec else config.BLACK
     if symbolic == "gradient":
