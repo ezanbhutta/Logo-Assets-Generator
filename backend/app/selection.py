@@ -583,7 +583,49 @@ def _lockup_icon(model: WorkingSVG, lockup: list, lock_clusters: list):
             and _wordmark_score(word_grp) > 0
             and _is_plausible_icon(model, lockup, icon_grp, word_grp, sep)):
         return icon_grp
-    return None
+
+    # Robust fallback: strip the WIDE horizontal text rows (the wordmark + any
+    # tagline) and whatever compact group remains, set apart from the text, is the
+    # icon. Catches dot-marks (Pulse), mascots (Snoot), shields (Zytress) and
+    # emblems the cluster/gap heuristics miss — a text row is wide-and-short, a
+    # symbol is compact, so they separate cleanly even when fused into one cluster.
+    return _icon_by_text_subtraction(model, lockup)
+
+
+def _icon_by_text_subtraction(model: WorkingSVG, lockup: list):
+    """The icon = the lockup minus its text. A WIDE baseline-aligned run of ≥3
+    similar-height marks is text (wordmark/tagline); the remaining compact group,
+    if set clearly apart (beside, above or below the text block), is the symbol.
+    Returns the icon nodes, or None — never carves a plain wordmark (no remainder)
+    or a scattered remainder."""
+    pts = [n for n in lockup if n.bbox]
+    if len(pts) < 4:
+        return None
+    text: set[str] = set()
+    for a in pts:
+        ah = a.bbox[3] - a.bbox[1]
+        if ah <= 0:
+            continue
+        band = [m for m in pts
+                if abs(m.centroid[1] - a.centroid[1]) <= 0.55 * ah
+                and 0.45 <= (m.bbox[3] - m.bbox[1]) / max(ah, 1e-6) <= 2.2]
+        # a wide run of aligned similar-height marks = a text row (a compact
+        # emblem made of aligned dots is NOT — it stays square).
+        if len(band) >= 3 and _squareness(model, band) < 0.45:
+            text |= {n.lpid for n in band}
+    icon = [n for n in pts if n.lpid not in text]
+    if not icon or not text or len(icon) >= len(pts):
+        return None                              # need both a wordmark and a remainder
+    tb = _bbox_of([n for n in pts if n.lpid in text])
+    ib = _bbox_of(icon)
+    icx, icy = (ib[0] + ib[2]) / 2, (ib[1] + ib[3]) / 2
+    beside = icx < tb[0] or icx > tb[2]          # icon centre outside the text x-span
+    stacked = icy < tb[1] or icy > tb[3]         # icon centre above/below the text
+    if not (beside or stacked):
+        return None                              # interleaved with the text -> not a clean icon
+    if _squareness(model, icon) < 0.30:
+        return None                              # scattered remainder, not a symbol
+    return icon
 
 
 def _end_emblem(pts: list, from_left: bool) -> list:

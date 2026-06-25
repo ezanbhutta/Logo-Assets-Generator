@@ -7,10 +7,11 @@ Stateless: all work happens in a per-job temp dir, cleaned by the caller (§2).
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import colors, ingest, selection, treatments
+from . import colors, ingest, selection, treatments, vision
 from .config import (ICON_STEM, LOGO_STEM, variant_filename)
 from .exporters import (write_svg, write_jpg, write_pdf, write_png_transparent)
 from .ingest import IngestError
@@ -106,8 +107,25 @@ def run_ingest(source: Path, workdir: Path) -> IngestSummary:
     if not boards:
         raise IngestError("Could not convert any artboard of the .ai/PDF.")
     boards = _dedupe(boards)
-    return IngestSummary(converter=converter, artboards=boards,
-                         primary_index=_suggest_primary(boards))
+    primary = _suggest_primary(boards)
+
+    # Robust icon/logo detection: when an API key is configured, ask AI vision to
+    # read the PRIMARY artboard (the one most likely picked) and use its boxes as
+    # that board's pre-filled suggestion. The geometric `auto_segment` stays the
+    # instant fallback and covers every other artboard. AI actually SEES the logo,
+    # so it catches dot-marks, mascots, script wordmarks and emblems the geometry
+    # misses — one extra call per upload, fully graceful (any failure -> geometry).
+    if vision.available():
+        pb = next((b for b in boards if b.index == primary), None)
+        if pb is not None:
+            try:
+                ai = vision.ai_segment(pb.working_svg, tuple(pb.viewbox))
+                if ai is not None:
+                    pb.suggestion = ai.as_dict()
+            except Exception:
+                logging.getLogger("uvicorn.error").exception("ingest: AI segment failed")
+
+    return IngestSummary(converter=converter, artboards=boards, primary_index=primary)
 
 
 def _dedupe(boards: list[ArtboardSummary]) -> list[ArtboardSummary]:
