@@ -245,6 +245,7 @@ def _ensure_contrast(ctx: TreatmentContext, vroot: etree._Element,
     nodes = [ctx.model.by_lpid.get(el.get(LPID_ATTR)) for el in leaves]
     fgs = [_effective_fg(treatment, mark, el.get(LPID_ATTR), n, icon)
            for el, n in zip(leaves, nodes)]
+    orig_fgs = list(fgs)        # colors BEFORE any substitution (for same-ink test)
 
     for i, el in enumerate(leaves):
         node, fg = nodes[i], fgs[i]
@@ -262,11 +263,18 @@ def _ensure_contrast(ctx: TreatmentContext, vroot: etree._Element,
             if (bn and bn.bbox and bn.area > node.area
                     and bn.bbox[0] <= nb[0] + eps and bn.bbox[1] <= nb[1] + eps
                     and bn.bbox[2] >= nb[2] - eps and bn.bbox[3] >= nb[3] - eps):
-                if fgs[j] is not None:
-                    backdrop = fgs[j]
-                else:
-                    avg = _gradient_avg(ctx, bn)
-                    backdrop = avg if avg else "gradient"
+                # A SAME-ORIGINAL-COLOR shape beneath is the same ink — one mark,
+                # not detail-on-shape. Compare ORIGINAL colors (not post-
+                # substitution) so every part of a same-color mark is judged
+                # against the canvas and knocks out together: a base bar the same
+                # gray as the triangle above it isn't "fixed" to white and erased
+                # (Aurora pyramid on white), and nested same-gray outlines on the
+                # brand's own gray all knock out uniformly instead of one turning
+                # white while the rest stay gray-invisible (Aurora on its gray).
+                if orig_fgs[i] is not None and orig_fgs[j] is not None \
+                        and orig_fgs[j] == orig_fgs[i]:
+                    continue
+                backdrop = fgs[j] if fgs[j] is not None else (_gradient_avg(ctx, bn) or "gradient")
         if backdrop in (None, "gradient"):
             continue                              # unknown backdrop -> white/black reads
 

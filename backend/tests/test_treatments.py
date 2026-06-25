@@ -123,6 +123,57 @@ def test_contrast_guard_is_layer_aware_keeps_detail_on_shape():
     assert blacks == 0, "white detail on the shape was wrongly knocked to black"
 
 
+def test_same_color_parts_are_not_erased_on_white(solid_model):
+    """The Aurora pyramid bug: a same-color mark made of nested shapes + a base
+    bar must NOT have a part judged 'gray-on-gray' against a same-color sibling
+    and 'fixed' to white (erasing it) on the white canvas. Same ink = one mark,
+    judged against the canvas — all parts stay their color."""
+    gray = "#708da0"
+    # outer triangle (open chevron) + a base bar directly beneath it (same gray);
+    # the bar's bbox sits just below the chevron — the false 'contained' case.
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 200">'
+           f'<path d="M150,40 L60,150 L70,150 L150,55 L230,150 L240,150 Z" fill="{gray}"/>'
+           f'<path d="M60,150 L64,162 L236,162 L240,150 Z" fill="{gray}"/></svg>')  # base bar
+    m = WorkingSVG.from_string(svg)
+    sel = selection.select_by_box(m, (50, 30, 200, 140))
+    ctx = treatments.build_context(m, sel, colors.detect(m))
+    out = treatments.render_variant(ctx, "logo", SOLID_LOGO[0], True)  # white bg, full
+    img = render(out).convert("RGB")
+    # the base bar region (bottom of the mark) shows gray ink, not blank white —
+    # i.e. the same-color base was NOT 'fixed' to white and erased.
+    grays = sum(near(img.getpixel((x, y)), (112, 141, 160), tol=45)
+                for x in range(int(CANVAS_W*0.35), int(CANVAS_W*0.65), 6)
+                for y in range(int(CANVAS_H*0.52), int(CANVAS_H*0.60), 4))
+    assert grays > 0, "the same-color base bar was erased (whitened) on white"
+
+
+def test_same_color_mark_knocks_out_uniformly_on_its_own_color():
+    """Aurora on its own gray: a same-color nested mark on the brand's own color
+    must knock out UNIFORMLY (every part flips together), not cascade — outer
+    part white while inner same-gray parts stay gray-invisible. (2-color logo so
+    the gray is brand-B and slot 3's background is that gray.)"""
+    gray, navy = "#708da0", "#083c75"
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200">'
+           f'<path d="M120,40 L40,150 L50,150 L120,55 L190,150 L200,150 Z" fill="{gray}"/>'
+           f'<path d="M85,150 L120,95 L155,150 L147,150 L120,105 L93,150 Z" fill="{gray}"/>'
+           f'<path d="M40,150 L44,162 L196,162 L200,150 Z" fill="{gray}"/>'
+           f'<rect x="240" y="80" width="120" height="40" fill="{navy}"/></svg>')  # navy wordmark
+    m = WorkingSVG.from_string(svg)
+    rep = colors.detect(m)
+    assert rep.brand_b == gray                     # gray is brand-B -> slot 3 bg
+    sel = selection.select_by_box(m, (30, 30, 180, 140))   # just the gray pyramid
+    ctx = treatments.build_context(m, sel, rep)
+    out = treatments.render_variant(ctx, "logo", SOLID_LOGO[2], True)  # brand-B (gray) bg
+    img = render(out).convert("RGB")
+    bg = img.getpixel((20, 20))                    # the gray canvas
+    # every part of the mark reads (differs from the gray bg) — uniform knockout,
+    # no part left gray-on-gray invisible
+    visible = sum(1 for x in range(int(CANVAS_W*0.30), int(CANVAS_W*0.72), 5)
+                  for y in range(int(CANVAS_H*0.28), int(CANVAS_H*0.64), 5)
+                  if not near(img.getpixel((x, y)), bg, tol=45))
+    assert visible > 12, "same-color nested mark did not knock out uniformly on its own color"
+
+
 def test_clipped_shape_survives_subset_pruning():
     """A clip-path definition is not artwork and must never be pruned — else the
     clipped shape (e.g. the gradient gear) vanishes in the icon subset (Orova)."""
