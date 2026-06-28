@@ -70,46 +70,62 @@ logo delivery package as a `.zip`. Upload → zip out. No DB, no auth.
   (4:4:4). SVG/PDF stay vector. Transparent PNG = 1080px logical @2× = 2160px wide.
 
 ## Treatments (§6 recipes — `backend/app/recipes.py`)
-Background pool per slot: `[white, brand-A, brand-B, white, black]`. brand-A =
-darker brand color, brand-B = more vivid; for a 1-color logo brand-B = a **deep
-shade of the brand color** (`colors.shade_of`, in-scheme — not plain black). A
-**neutral-only** logo (black wordmark, no chromatic color) gets its own neutral
-scale instead: brand-A = a charcoal tint, brand-B = a light gray on which the
-mark keeps its true ink — never three identical black slots.
-- **Solid Logo & Icon 01–05:** white/full · brand-A/**adaptive** ·
-  brand-B/**adaptive** · **tint**/all-black (mono) · black/all-white (mono). The
-  mono-black slot sits on a soft **in-scheme tint** (`colors.brand_tint` — a pale
-  wash of the most vivid color) **only when the brand is all-dark** (no naturally
-  light color); brands with a light color (MpCarney's gold) or a single color
-  keep plain white there. Gives an all-dark brand a light *branded* background
-  instead of a redundant second white (`tint` → white when none).
-- **Gradient Logo/Icon:** 01 white/full · 02 **white knockout on a rebuilt
-  full-bleed gradient** (hero) · 03 **black/white knockout** (the designer
-  standard — Orova; a gradient's tone shifts across the mark, so only white reads
-  cleanly on black) · 04 white/black · 05 dark-stop-solid/white. Gradient stop
-  colors are folded into brand ranking (`colors.detect`) so brand-A/brand-B
-  reflect the real hues, not a gray outline.
+**The SOLID with-background set is the owner's trained recipe** (PACK FRESH CLUB
+session), built **per-logo from its real palette** by `recipes.build_solid` — not
+a static table, because slots 02–04 depend on the brand colors. The five slots:
+
+- **01 — white / primary, exactly as authored.** The designer's own colors, with
+  **no recolor and no contrast "fixing"** (the guard never runs on the white
+  primary). A soft periwinkle stays periwinkle; a same-gray pyramid base stays
+  gray. (Both the PACK and Aurora bugs were the guard mangling this slot —
+  whitening/blackening the primary. It is now untouchable.)
+- **02 — dark / the SAME logo on the dark field.** Background = the **darkest
+  shade used in the logo** (a navy, a deep brown — `recipes._dark_background`,
+  luminance < 0.20), or **BLACK** when the logo has no dark shade. The logo lands
+  **verbatim** (recolor `keep`): a color is lifted only when it would vanish on
+  the **field itself** — canvas-only, never judged against a sibling stroke, so a
+  layered/offset wordmark (PACK's blue+yellow ribbons) lands intact on black.
+- **03 · 04 — the two brand colors as fields: the color-SWAP pair.** When the
+  logo has exactly **two** brand colors that look good on each other
+  (`colors.colors_harmonize`), each brand field carries the **OTHER** brand color,
+  **flat**: e.g. **full yellow logo on the blue field, full blue logo on the
+  yellow field**. When the two colors would **clash** (both bold & saturated with
+  little tonal separation — they vibrate; or near-identical so the mark vanishes)
+  it falls back to the designer mono: a **white** mark on the darker field, a
+  **black** mark on the lighter field. (1-color / neutral / 3+-color marks have no
+  clean swap, so their brand fields keep the **adaptive** full recolor instead —
+  see below. An exception to refine over time.)
+- **05 — white / one-color BLACK monochrome.** The transparent set still ships
+  **both** one-color marks (white *and* black), so the package always carries the
+  full monochrome pair.
+
+- **Gradient Logo/Icon (unchanged designer standard):** 01 white/full · 02 **white
+  knockout on a rebuilt full-bleed gradient** (hero) · 03 **black/white knockout**
+  (Orova; a gradient's tone shifts across the mark, so only white reads cleanly on
+  black) · 04 white/black · 05 dark-stop-solid/white. Gradient stop colors are
+  folded into brand ranking (`colors.detect`) so brand-A/brand-B reflect the real
+  hues, not a gray outline.
 - **Transparent Logo 01–04:** full · split · white · black. **Icon 01–03:** full · white · black.
 
-### Adaptive recolor (the designer engine — `treatments._ensure_contrast`)
-"Adaptive" = recolor `full` + the layer-aware contrast guard. On any colored
-background the artwork **keeps every color that reads** (≥ ~2.2:1 against its
-actual backdrop) — never blanket-white on colored backgrounds. Each color that
-would vanish is swapped, in order of preference, to:
-1. the **most similar color from the logo's OWN palette** that genuinely reads
-   (≥ 4.5:1) — a brown mascot outline on the brown brand bg becomes the mascot's
-   cream, never an out-of-scheme color;
-2. else **white/black** — white preferred when it clears ~3:1 (the classic mark
-   on saturated brand colors); black only on genuinely light backgrounds.
-Layer-aware throughout: an element is judged against what is actually behind it
-(a larger shape beneath, by paint order — including a gradient shape's average
-tone — else the canvas), so white detail on a purple gear survives a white
-canvas, and substituted colors cascade (elements above see the new color below).
-Gradient-filled elements are judged by their **average stop tone** on non-white
-backdrops; on white (the canonical full-color slot) they are always kept. Mono
-(white/black) treatments never substitute palette colors — nested detail flips
-white↔black so the pattern stays visible; mono stays mono. This one mechanism
-handles wordmarks, combination marks, multi-color mascots, and gradient marks.
+### Recolor modes (`treatments._recolor` / `_ensure_contrast`)
+- **`full`** — keep authored fills; the **layer-aware** contrast guard substitutes
+  only what would vanish. On a colored field the artwork **keeps every color that
+  reads** (≥ ~2.2:1 against its actual backdrop), and each one that doesn't is
+  swapped, in order, to (1) the **most similar color from the logo's OWN palette**
+  that genuinely reads (≥ 4.5:1) — a brown mascot outline on the brown brand field
+  becomes the mascot's cream — else (2) **white/black** (white preferred ≥ ~3:1).
+  Layer-aware: an element is judged against the larger shape **fully containing**
+  it (≥ 2.5× its area — a true backdrop, not a sibling stroke), so white detail on
+  a purple gear survives, and substitutions cascade. **On a WHITE field the guard
+  does not run at all** — the full-color primary is always the logo as authored.
+- **`keep`** (slot 02) — same as `full` but **canvas-only**: judged against the
+  field, never a sibling stroke. "Put the same on the dark background."
+- **`flat`** (slots 03/04 swap) — recolor **every** fill/stroke to one color (the
+  other brand color, or a knockout). A deliberate single color — **no guard**.
+- **`white` / `black`** (mono) — every fill → white/black; never a palette color.
+- Substitutions stay **in the logo's scheme** (its palette + white/black) — never
+  an invented outside color. Handles wordmarks, combination marks, mascots, and
+  (via the gradient set) gradient marks.
 
 ### Hard rules (where the easy implementation is wrong)
 - Operate in **vector space**; never crop a preview or pixel-sample a gradient.

@@ -126,6 +126,13 @@ MIN_CONTRAST = 2.2
 # read at lower ratios because hue separates them.
 _NEUTRAL_PAIR_CONTRAST = 3.0
 _CHROMATIC_SAT = 0.15
+# A shape only counts as another element's BACKDROP (detail-on-shape) when it is
+# substantially larger — a mascot's face behind its eyes, a gear behind its
+# inner cut. Sibling strokes of similar size (a layered/offset wordmark, where a
+# yellow ribbon sits beside a periwinkle one) are NOT a backdrop for each other:
+# both are meant to read against the canvas, so each is judged against it. Below
+# this ratio the candidate is treated as a sibling layer, not a backdrop.
+_BACKDROP_MIN_RATIO = 2.5
 
 
 def _reads_on(fg: str, bg: str) -> bool:
@@ -150,6 +157,8 @@ def _recolor(ctx: TreatmentContext, vroot: etree._Element, treatment: Treatment,
         color = config.WHITE
     elif treatment.recolor == "black":
         color = config.BLACK
+    elif treatment.recolor == "flat":
+        color = normalize_hex(treatment.color) or config.BLACK
 
     for el in vroot.iter():
         if local_name(el) not in _LEAVES:
@@ -158,7 +167,7 @@ def _recolor(ctx: TreatmentContext, vroot: etree._Element, treatment: Treatment,
         if not lpid:
             continue                              # clip/defs path — not artwork
         node = ctx.model.by_lpid.get(lpid)
-        if treatment.recolor == "full":
+        if treatment.recolor in ("full", "keep"):
             continue
         if treatment.recolor == "split":
             # icon keeps its color/gradient; wordmark -> white (§6.2/02).
@@ -168,8 +177,10 @@ def _recolor(ctx: TreatmentContext, vroot: etree._Element, treatment: Treatment,
         if color is not None:
             _apply(el, color, node)
 
-    # Contrast guard: ensure every element reads against what's behind it.
-    if bg is not None:
+    # Contrast guard: ensure every element reads against what's behind it. A
+    # 'flat' treatment is a deliberate single colour (the owner's colour-swap or
+    # a knockout, already chosen to read) — never second-guess it.
+    if bg is not None and treatment.recolor != "flat":
         _ensure_contrast(ctx, vroot, treatment, mark, bg)
 
 
@@ -182,6 +193,8 @@ def _effective_fg(treatment: Treatment, mark: str, lpid: str, node,
         return config.WHITE
     if r == "black":
         return config.BLACK
+    if r == "flat":
+        return normalize_hex(treatment.color)
     if r == "split" and mark == "logo" and lpid not in icon:
         return config.WHITE
     return normalize_hex(node.fill) if node else None
@@ -237,8 +250,22 @@ def _ensure_contrast(ctx: TreatmentContext, vroot: etree._Element,
         the gear, not the canvas, so it survives the white background."""
     bg_kind, bg_value = bg
     canvas = normalize_hex(bg_value) if bg_kind == "solid" else "gradient"
-    adaptive = treatment.recolor == "full"
+    # 'full' and 'keep' both preserve authored colours and substitute only what
+    # fails; 'full' is LAYER-AWARE (a mascot's detail is judged against the shape
+    # behind it), while 'keep' is canvas-only (slot 02 — the same logo on the dark
+    # field, judged only against that field so layered strokes survive verbatim).
+    adaptive = treatment.recolor in ("full", "keep")
+    layer_aware = treatment.recolor == "full"
     palette = _palette(ctx) if adaptive else []
+
+    # The PRIMARY slot — a full-colour treatment on a WHITE field — is the logo
+    # exactly as the designer authored it. Never substitute a colour here: the
+    # designer chose a soft periwinkle / a same-gray pyramid base on purpose, and
+    # "fixing" it to black erased the real primary (the PACK / Aurora bugs). The
+    # adaptive guard is only for dark / coloured fields where authored colours
+    # genuinely vanish.
+    if adaptive and canvas == config.WHITE:
+        return
 
     icon = set(ctx.selection.icon)
     leaves = [el for el in vroot.iter() if local_name(el) in _LEAVES]
@@ -255,12 +282,13 @@ def _ensure_contrast(ctx: TreatmentContext, vroot: etree._Element,
         # The topmost LARGER element drawn beneath this one that FULLY contains
         # it (small tolerance). Full containment — not centroid-in-bbox — so a
         # mark that merely brushes a shape (a mascot's ears poking past its
-        # body) is judged against the canvas it actually sits on.
+        # body) is judged against the canvas it actually sits on. Layer-aware
+        # treatments only; 'keep' stays on the canvas backdrop.
         nb = node.bbox
         eps = 0.06 * max(nb[2] - nb[0], nb[3] - nb[1], 1e-6)
-        for j in range(i):
+        for j in range(i if layer_aware else 0):
             bn = nodes[j]
-            if (bn and bn.bbox and bn.area > node.area
+            if (bn and bn.bbox and bn.area > node.area * _BACKDROP_MIN_RATIO
                     and bn.bbox[0] <= nb[0] + eps and bn.bbox[1] <= nb[1] + eps
                     and bn.bbox[2] >= nb[2] - eps and bn.bbox[3] >= nb[3] - eps):
                 # A SAME-ORIGINAL-COLOR shape beneath is the same ink — one mark,
@@ -307,7 +335,11 @@ def _apply(el: etree._Element, color: str, node) -> None:
 
 # --- background resolution ---------------------------------------------------
 def _resolve_bg(ctx: TreatmentContext, symbolic: str) -> tuple[str, object]:
-    """Return ('solid', '#rrggbb') or ('gradient', <gradient element>)."""
+    """Return ('solid', '#rrggbb') or ('gradient', <gradient element>). The solid
+    SOLID-set backgrounds are already literal hex (resolved per-logo in
+    ``recipes.build_solid``); the symbolic names below are the gradient set."""
+    if symbolic.startswith("#"):
+        return "solid", symbolic
     r = ctx.report
     if symbolic == "white":
         return "solid", config.WHITE

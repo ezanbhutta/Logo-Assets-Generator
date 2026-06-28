@@ -5,7 +5,7 @@ from app import colors, selection, treatments
 from app.config import CANVAS_W, CANVAS_H, PNG_WIDTH, EXPORT_SCALE
 from app.exporters import (write_svg, write_jpg, write_pdf,
                            write_png_transparent, pdf_is_vector)
-from app.recipes import SOLID_LOGO, TRANSPARENT_LOGO
+from app.recipes import build_solid, TRANSPARENT_LOGO
 from conftest import ICON_BOX
 
 
@@ -14,11 +14,20 @@ def _ctx(model):
     return treatments.build_context(model, sel, colors.detect(model))
 
 
+def _logo01(ctx):
+    """The primary (white/full) with-bg logo treatment for this logo."""
+    return build_solid(ctx.report, "logo")[0]
+
+
+def _icon01(ctx):
+    return build_solid(ctx.report, "icon")[0]
+
+
 def test_jpg_is_canvas_at_export_scale_rgb(solid_model, tmp_path):
     """With-bg LOGO JPEG is the fixed 1920x1080 artboard, rasterized at
     @EXPORT_SCALE (default @2x -> 3840x2160)."""
     ctx = _ctx(solid_model)
-    svg = treatments.render_variant(ctx, "logo", SOLID_LOGO[0], True)
+    svg = treatments.render_variant(ctx, "logo", _logo01(ctx), True)
     out = tmp_path / "logo.jpg"
     write_jpg(svg, out)
     img = Image.open(out)
@@ -30,9 +39,8 @@ def test_icon_jpg_is_square_1080_at_export_scale(solid_model, tmp_path):
     """With-bg ICON JPEG is the fixed 1080x1080 SQUARE artboard at @EXPORT_SCALE
     (default @2x -> 2160x2160) — never stretched to the logo's 16:9."""
     from app.config import ICON_CANVAS
-    from app.recipes import SOLID_ICON
     ctx = _ctx(solid_model)
-    svg = treatments.render_variant(ctx, "icon", SOLID_ICON[0], True)
+    svg = treatments.render_variant(ctx, "icon", _icon01(ctx), True)
     out = tmp_path / "icon.jpg"
     write_jpg(svg, out)
     img = Image.open(out)
@@ -57,7 +65,7 @@ def test_png_is_1080_logical_wide_at_export_scale_with_alpha(solid_model, tmp_pa
 
 def test_with_bg_pdf_is_vector(solid_model, tmp_path):
     ctx = _ctx(solid_model)
-    svg = treatments.render_variant(ctx, "logo", SOLID_LOGO[0], True)
+    svg = treatments.render_variant(ctx, "logo", _logo01(ctx), True)
     out = tmp_path / "logo.pdf"
     write_pdf(svg, out)
     assert out.exists() and pdf_is_vector(out)
@@ -77,7 +85,7 @@ def test_gradient_pdf_is_vector(gradient_model, tmp_path):
 def test_output_svg_contains_paths_not_image(solid_model, tmp_path):
     """Acceptance (c): an output SVG must contain paths, not an embedded image."""
     ctx = _ctx(solid_model)
-    svg = treatments.render_variant(ctx, "logo", SOLID_LOGO[0], True)
+    svg = treatments.render_variant(ctx, "logo", _logo01(ctx), True)
     out = tmp_path / "logo.svg"
     write_svg(svg, out)
     text = out.read_text()

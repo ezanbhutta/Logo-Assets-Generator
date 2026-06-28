@@ -118,6 +118,32 @@ def best_substitute(fg: str, bg: str, palette: list[str]) -> str:
     return designer_knockout(bg)
 
 
+def colors_harmonize(a: str, b: str) -> bool:
+    """Do two brand colors look good placed *on each other* — i.e. is the
+    color-swap pair (color-B logo on color-A background, and vice-versa) a good
+    treatment, or should it fall back to mono knockouts?
+
+    A designer reaches for the two-color swap by default — it's a striking,
+    in-scheme way to use a brand's palette (e.g. a soft yellow mark on a powder-
+    blue field). So this returns True for the common case. It only returns False
+    when the swap would genuinely fail:
+
+      * the two colors are nearly identical — the recolored mark would vanish
+        into the field; or
+      * both are bold and highly saturated with little tonal separation — they
+        *vibrate* on each other (the harsh red-on-green clash). With real tonal
+        separation (navy/gold) even two saturated colors read cleanly, so those
+        still swap.
+
+    When this is False the engine uses the designer fallback the owner specified:
+    a black mark on the lighter brand color and a white mark on the darker one."""
+    if _distance(a, b) < 0.05:                       # too similar -> mark vanishes
+        return False
+    if min(saturation(a), saturation(b)) >= 0.6 and contrast_ratio(a, b) < 2.2:
+        return False                                 # two vivid colors that clash
+    return True
+
+
 def mix_hex(a: str, b: str, t: float) -> str:
     """Linear mix of two hex colors: t=0 -> a, t=1 -> b."""
     (r1, g1, b1), (r2, g2, b2) = _rgb(a), _rgb(b)
