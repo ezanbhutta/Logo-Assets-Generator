@@ -20,10 +20,11 @@ because slots 02–04 depend on the brand colors:
                                other (``colors_harmonize`` is False) they fall
                                back to the designer mono: a black mark on the
                                lighter field, a white mark on the darker field.
-  05  white background      · the one-colour BLACK monochrome.
+  05  white background      · the BLACK one-colour monochrome.
+  06  black background      · the WHITE one-colour monochrome (reversed) — the
+                              owner ships both monos as their own slides.
 
-The transparent set still ships both the white and black one-colour marks, so the
-package always carries the full monochrome pair.
+The transparent set also carries both one-colour marks.
 
 Backgrounds are literal ``#rrggbb`` (resolved per-logo) or symbolic for the
 gradient set (``gradient`` / ``dark_stop`` / ``brand_a`` / ``brand_b``).
@@ -109,7 +110,10 @@ def build_solid(report, mark: str) -> list["Treatment"]:
         slots += [Treatment(3, report.brand_a, "full"),
                   Treatment(4, report.brand_b, "full")]
 
-    slots.append(Treatment(5, config.WHITE, "black"))     # one-colour black monochrome
+    slots += [
+        Treatment(5, config.WHITE, "black"),    # black one-colour monochrome (on white)
+        Treatment(6, config.BLACK, "white"),    # white one-colour monochrome (on black, reversed)
+    ]
     return slots
 
 

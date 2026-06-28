@@ -14,9 +14,9 @@ def _primary(summ):
 
 # Expected §5.1 tree (relative to the root folder), brand "Acme".
 EXPECTED = {
-    "JPEG": [f"{s} {i:02d}.jpg" for s in ("Icon", "Logo") for i in range(1, 6)],
-    "PDF": [f"{s} {i:02d}.pdf" for s in ("Icon", "Logo") for i in range(1, 6)],
-    "SVG": [f"{s} {i:02d}.svg" for s in ("Icon", "Logo") for i in range(1, 6)],
+    "JPEG": [f"{s} {i:02d}.jpg" for s in ("Icon", "Logo") for i in range(1, 7)],
+    "PDF": [f"{s} {i:02d}.pdf" for s in ("Icon", "Logo") for i in range(1, 7)],
+    "SVG": [f"{s} {i:02d}.svg" for s in ("Icon", "Logo") for i in range(1, 7)],
     "Transparent/PNG": [f"Icon {i:02d}.png" for i in range(1, 4)] +
                        [f"Logo {i:02d}.png" for i in range(1, 5)],
     "Transparent/SVG": [f"Icon {i:02d}.svg" for i in range(1, 4)] +
@@ -44,11 +44,12 @@ def test_tree_matches_fixture_contract(solid_svg, tmp_path):
 
 
 def test_total_file_count(solid_svg, tmp_path):
-    """51 generated variants + pass-through .ai/.eps (§5.1)."""
+    """57 generated variants + pass-through .ai/.eps (§5.1). With-bg is 6+6 (both
+    monochromes ship as their own slides); transparent stays 4+3."""
     ai = tmp_path / "x.ai"; ai.write_bytes(b"%PDF-1.5\n% fake ai\n")
     eps = tmp_path / "x.eps"; eps.write_bytes(b"%!PS-Adobe EPSF\n")
     res = _generate(solid_svg, tmp_path, ai=ai, eps=eps)
-    assert len(res.manifest) == 51 + 2
+    assert len(res.manifest) == 57 + 2
 
 
 def test_passthrough_files_present_and_untouched(solid_svg, tmp_path):
@@ -70,7 +71,7 @@ def test_zip_top_folder_is_brand_files(solid_svg, tmp_path):
 def test_naming_zero_padded_space_before_number(solid_svg, tmp_path):
     res = _generate(solid_svg, tmp_path)
     assert "Acme Files/JPEG/Icon 01.jpg" in res.manifest
-    assert "Acme Files/JPEG/Logo 05.jpg" in res.manifest
+    assert "Acme Files/JPEG/Logo 06.jpg" in res.manifest
 
 
 def test_no_box_generates_logo_only(tmp_path):
@@ -87,8 +88,8 @@ def test_no_box_generates_logo_only(tmp_path):
                                        selection_box=None), tmp_path)
     assert res.include_icon is False
     assert not any("/Icon " in m for m in res.manifest)        # no icon files
-    assert any("/Logo 05.jpg" in m for m in res.manifest)      # full logo set present
-    assert len([m for m in res.manifest if "/Logo " in m]) == 27
+    assert any("/Logo 06.jpg" in m for m in res.manifest)      # full logo set present (6 with-bg)
+    assert len([m for m in res.manifest if "/Logo " in m]) == 30
 
 
 def test_box_generates_both_sets(solid_svg, tmp_path):

@@ -59,8 +59,8 @@ def test_generate_returns_zip_with_full_tree(solid_svg):
     assert g.status_code == 200
     assert g.headers["content-type"] == "application/zip"
     names = zipfile.ZipFile(io.BytesIO(g.content)).namelist()
-    assert len(names) == 51 + 2                      # variants + .ai + .eps
-    assert any(n.endswith("/JPEG/Logo 05.jpg") for n in names)
+    assert len(names) == 57 + 2                      # variants + .ai + .eps (6+6 with-bg)
+    assert any(n.endswith("/JPEG/Logo 06.jpg") for n in names)
 
 
 def test_generate_cleans_job_dir(solid_svg):

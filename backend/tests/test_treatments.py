@@ -38,12 +38,15 @@ def _bg_pixel(svg):
 
 # --- the five solid fields ---------------------------------------------------
 def test_solid_logo_backgrounds(solid_model):
-    """The five with-bg fields for Fire (navy #112630 + red #ec1c24): white ·
-    navy (the dark shade) · navy + red (the two swap fields) · white (mono)."""
+    """The six with-bg fields for Fire (navy #112630 + red #ec1c24): white · navy
+    (the dark shade) · navy + red (the two swap fields) · white (black mono) ·
+    black (white mono)."""
     ctx, rep = _ctx(solid_model)
     expect = {1: (255, 255, 255), 2: (17, 38, 48), 3: (17, 38, 48),
-              4: (236, 28, 36), 5: (255, 255, 255)}
-    for t in _solid(rep):
+              4: (236, 28, 36), 5: (255, 255, 255), 6: (0, 0, 0)}
+    rec = _solid(rep)
+    assert len(rec) == 6
+    for t in rec:
         bg = _bg_pixel(treatments.render_variant(ctx, "logo", t, True))
         assert near(bg, expect[t.index]), f"Logo {t.index} bg {bg}"
 
@@ -171,14 +174,18 @@ def test_colour_swap_clash_falls_back_to_mono_knockout():
 
 
 # --- slot 05 + transparent monos ---------------------------------------------
-def test_monochrome_slot_is_black_on_white(solid_model):
-    """Slot 05 = the one-colour BLACK monochrome on white."""
+def test_monochrome_slots_are_black_on_white_and_white_on_black(solid_model):
+    """The owner ships BOTH monochromes as their own slides: 05 = black mark on
+    white, 06 = white mark on black."""
     ctx, rep = _ctx(solid_model)
-    out = treatments.render_variant(ctx, "logo", _solid(rep)[4], True)
-    assert near(_bg_pixel(out), (255, 255, 255))
-    img = render(out).convert("RGB")
-    blacks = sum(near(img.getpixel((x, MID)), (0, 0, 0)) for x in range(0, CANVAS_W, 4))
-    assert blacks > 0
+    s5 = treatments.render_variant(ctx, "logo", _solid(rep)[4], True)
+    assert near(_bg_pixel(s5), (255, 255, 255))
+    img5 = render(s5).convert("RGB")
+    assert sum(near(img5.getpixel((x, MID)), (0, 0, 0)) for x in range(0, CANVAS_W, 4)) > 0
+    s6 = treatments.render_variant(ctx, "logo", _solid(rep)[5], True)
+    assert near(_bg_pixel(s6), (0, 0, 0))
+    img6 = render(s6).convert("RGB")
+    assert sum(near(img6.getpixel((x, MID)), (255, 255, 255)) for x in range(0, CANVAS_W, 4)) > 0
 
 
 def test_transparent_set_ships_both_one_colour_marks(solid_model):

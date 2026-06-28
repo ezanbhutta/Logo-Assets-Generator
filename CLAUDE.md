@@ -48,15 +48,15 @@ logo delivery package as a `.zip`. Upload → zip out. No DB, no auth.
   ```
   [Brand] Files/
   ├─ [Brand].ai · [Brand].eps        ← masters at root, ONLY the selected artboard
-  ├─ JPEG/  Icon 01–05 (2160×2160) · Logo 01–05 (3840×2160)  (with background)
-  ├─ PDF/   Icon 01–05 (1080²) · Logo 01–05 (1920×1080)      (vector)
-  ├─ SVG/   Icon 01–05 (1080²) · Logo 01–05 (1920×1080)      (vector)
+  ├─ JPEG/  Icon 01–06 (2160×2160) · Logo 01–06 (3840×2160)  (with background)
+  ├─ PDF/   Icon 01–06 (1080²) · Logo 01–06 (1920×1080)      (vector)
+  ├─ SVG/   Icon 01–06 (1080²) · Logo 01–06 (1920×1080)      (vector)
   └─ Transparent/                    (edge-to-edge, no background — unchanged)
      ├─ PNG/  Icon 01–03 · Logo 01–04   (raster, 2160px wide @2×, alpha)
      ├─ SVG/  Icon 01–03 · Logo 01–04   (vector, tight bbox)
      └─ PDF/  Icon 01–03 · Logo 01–04   (vector, tight bbox)
   ```
-  51 generated files + the 2 pass-through originals.
+  57 generated files + the 2 pass-through originals.
 - **Icon set is OPTIONAL.** No icon box marked (and no named layers) → generate
   the **logo set only** (27 files). Never force/auto-ship an icon the CSR didn't ask for.
 - **Ignore extras** found in reference zips — social cover photos
@@ -64,8 +64,10 @@ logo delivery package as a `.zip`. Upload → zip out. No DB, no auth.
   Instagram templates, **iconography sets**, per-variant EPS, AI/EPS-in-folders,
   bare `Artboard N` exports. Not generated. (Possible future feature: auto
   social covers — flagged, not built.)
-- **Treatment counts are fixed at 5+5 (with-bg) / 3+4 (transparent).** Some
-  older packages ran extended sets (e.g. Logo 01–10); the locked standard is 5.
+- **Treatment counts: 6+6 (with-bg solid) / 3+4 (transparent).** The solid
+  with-background set ships **both** monochromes as their own slides — 05 black
+  on white, 06 white on black (owner decision, PACK session). The **gradient**
+  with-bg set stays 5 (it already carries both monos within its standard).
 - **Raster quality:** @2× (env `LOGO_EXPORT_SCALE`, default 2), JPEG quality 95
   (4:4:4). SVG/PDF stay vector. Transparent PNG = 1080px logical @2× = 2160px wide.
 
@@ -95,9 +97,9 @@ a static table, because slots 02–04 depend on the brand colors. The five slots
   **black** mark on the lighter field. (1-color / neutral / 3+-color marks have no
   clean swap, so their brand fields keep the **adaptive** full recolor instead —
   see below. An exception to refine over time.)
-- **05 — white / one-color BLACK monochrome.** The transparent set still ships
-  **both** one-color marks (white *and* black), so the package always carries the
-  full monochrome pair.
+- **05 — white / one-color BLACK monochrome · 06 — black / one-color WHITE
+  monochrome (reversed).** The owner ships **both** monochromes as their own
+  slides. (The transparent set also carries both one-color marks.)
 
 - **Gradient Logo/Icon (unchanged designer standard):** 01 white/full · 02 **white
   knockout on a rebuilt full-bleed gradient** (hero) · 03 **black/white knockout**
