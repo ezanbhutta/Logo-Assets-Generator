@@ -1,5 +1,5 @@
 // Lightweight progress indicator across the CSR flow.
-const STEPS = ["Upload", "Artboard", "Configure", "Download"];
+const STEPS = ["Upload", "Tag", "Configure", "Download"];
 
 export default function Steps({ current }) {
   return (

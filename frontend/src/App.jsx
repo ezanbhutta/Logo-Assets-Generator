@@ -2,34 +2,39 @@ import { useState } from "react";
 import Uploader from "./components/Uploader.jsx";
 import SvgPreview from "./components/SvgPreview.jsx";
 import ColorConfirm from "./components/ColorConfirm.jsx";
-import ArtboardChooser from "./components/ArtboardChooser.jsx";
+import ArtboardTagger from "./components/ArtboardTagger.jsx";
 import TopBar from "./components/TopBar.jsx";
 import Steps from "./components/Steps.jsx";
 import { ingest, generate, segment, downloadBlob } from "./api.js";
 
 export default function App() {
   const [result, setResult] = useState(null);
-  const [chosen, setChosen] = useState(null); // selected artboard index
+  // The CSR tags two roles across all artboards/files (global indices).
+  const [logoArtboard, setLogoArtboard] = useState(null);
+  const [iconArtboard, setIconArtboard] = useState(null);
+  const [tagged, setTagged] = useState(false); // has the CSR finished the tag step?
   const [brand, setBrand] = useState("");
-  const [logoBox, setLogoBox] = useState(null); // logo region (carve out a bento)
-  const [iconBox, setIconBox] = useState(null);  // icon region
+  const [logoBox, setLogoBox] = useState(null);   // logo region within the logo artboard
+  const [iconBox, setIconBox] = useState(null);    // icon region within the icon source
   const [removed, setRemoved] = useState([]);
-  const [mark, setMark] = useState("icon"); // 'logo' | 'icon' | 'named' — active tool
-  const [suggestion, setSuggestion] = useState(null); // geometric fallback boxes (from ingest)
-  const [usedSuggestion, setUsedSuggestion] = useState(false); // did the CSR run auto-detect?
-  const [detecting, setDetecting] = useState(false);  // AI auto-detect in flight
-  const [detectNote, setDetectNote] = useState("");   // explanation of what was detected
+  const [mark, setMark] = useState("icon"); // 'logo' | 'icon' | 'named' — logo-preview tool
+  const [suggestion, setSuggestion] = useState(null);
+  const [usedSuggestion, setUsedSuggestion] = useState(false);
+  const [detecting, setDetecting] = useState(false);
+  const [detectNote, setDetectNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const [manual, setManual] = useState(null); // {reasons} when active board is out of scope
+  const [manual, setManual] = useState(null);
   const [done, setDone] = useState(false);
 
-  // The active artboard (the chosen primary logo) drives the rest of the flow.
-  // `chosen` is the artboard's page index (.index), not a list position.
-  const active =
-    result && chosen != null
-      ? result.artboards.find((b) => b.index === chosen)
-      : null;
+  const boardAt = (i) =>
+    result && i != null ? result.artboards.find((b) => b.index === i) : null;
+  const logoBoard = boardAt(logoArtboard);
+  // a SEPARATE icon artboard (distinct from the logo); null when the icon is
+  // inside the logo artboard or untagged.
+  const iconBoard =
+    iconArtboard != null && iconArtboard !== logoArtboard ? boardAt(iconArtboard) : null;
+  const iconInLogo = iconArtboard == null || iconArtboard === logoArtboard;
 
   async function handleIngest(payload) {
     setBusy(true);
@@ -38,8 +43,12 @@ export default function App() {
       const r = await ingest(payload);
       setResult(r);
       setBrand(r.brand);
-      // Single artboard -> proceed straight away; multiple -> force a choice.
-      pickArtboard(r, r.artboard_count === 1 ? r.primary_index : null);
+      resetSelection();
+      // suggest the engine's primary as the logo; single artboard -> skip tagging
+      setLogoArtboard(r.primary_index);
+      setIconArtboard(null);
+      setTagged(r.artboard_count === 1);
+      if (r.artboard_count === 1) primeBoard(r, r.primary_index);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -47,8 +56,7 @@ export default function App() {
     }
   }
 
-  function pickArtboard(r, index) {
-    setChosen(index);
+  function resetSelection() {
     setRemoved([]);
     setManual(null);
     setSuggestion(null);
@@ -56,44 +64,57 @@ export default function App() {
     setDetectNote("");
     setLogoBox(null);
     setIconBox(null);
-    if (index != null) {
-      const b = r.artboards.find((x) => x.index === index);
-      if (b.suggestion) {
-        setSuggestion(b.suggestion); // keep for the Auto-detect fallback
-        // Auto-apply the engine's detected boxes immediately. They are computed
-        // in the artwork's OWN coordinate space (server-side), so they're always
-        // correct — no dependence on the browser's screen->SVG mapping. The CSR
-        // can still adjust, clear, or run AI Auto-detect to refine. This makes
-        // the common brand-sheet case work with zero clicks.
-        const { logo_box, icon_box, note } = b.suggestion;
-        if (logo_box) setLogoBox(logo_box);
-        if (icon_box) setIconBox(icon_box);
-        if (logo_box || icon_box) {
-          setUsedSuggestion(true);
-          setDetectNote(note || "");
-        }
+  }
+
+  // Prepare the marking step for a chosen logo artboard: load its auto-detected
+  // boxes (computed server-side in the artwork's own space) and pick a tool.
+  function primeBoard(r, index) {
+    const b = r.artboards.find((x) => x.index === index);
+    if (!b) return;
+    if (b.suggestion) {
+      setSuggestion(b.suggestion);
+      const { logo_box, icon_box, note } = b.suggestion;
+      if (logo_box) setLogoBox(logo_box);
+      if (icon_box) setIconBox(icon_box);
+      if (logo_box || icon_box) {
+        setUsedSuggestion(true);
+        setDetectNote(note || "");
       }
-      setMark(b.named_selection ? "named" : "icon");
-      if (!b.supported) setManual({ reasons: b.reasons });
+    }
+    setMark(b.named_selection ? "named" : "icon");
+    if (!b.supported) setManual({ reasons: b.reasons });
+  }
+
+  function onTag(role, index) {
+    if (role === "logo") {
+      setLogoArtboard((cur) => (cur === index ? null : index));
+    } else {
+      setIconArtboard((cur) => (cur === index ? null : index));
     }
   }
 
-  // Auto-detect: ask the backend to read the artboard (Claude vision when a key
-  // is configured; geometric fallback otherwise) and fill the editable boxes.
+  function onContinue() {
+    if (logoArtboard == null) return;
+    resetSelection();
+    primeBoard(result, logoArtboard);
+    setTagged(true);
+  }
+
+  // Auto-detect on the LOGO artboard (Claude vision when a key is set; geometric
+  // fallback otherwise).
   async function applySuggestion() {
-    if (detecting || chosen == null) return;
+    if (detecting || logoArtboard == null) return;
     setDetecting(true);
-    let s = await segment({ job_id: result.job_id, artboard: chosen });
+    let s = await segment({ job_id: result.job_id, artboard: logoArtboard });
     setDetecting(false);
-    // Fall back to the geometric suggestion embedded at ingest if the call failed.
     if (!s || (!s.logo_box && !s.icon_box)) {
       s = suggestion
         ? { ...suggestion, source: "geometry" }
         : s || { logo_box: null, icon_box: null, note: "", source: "none" };
     }
     setLogoBox(s.logo_box || null);
-    setIconBox(s.icon_box || null);
-    if (s.icon_box) setMark("icon");
+    if (iconInLogo) setIconBox(s.icon_box || null);
+    if (s.icon_box && iconInLogo) setMark("icon");
     else if (s.logo_box) setMark("logo");
     setDetectNote(
       s.note || (s.logo_box || s.icon_box ? "" : "Nothing to auto-detect — draw the boxes by hand.")
@@ -108,12 +129,15 @@ export default function App() {
       const blob = await generate({
         job_id: result.job_id,
         brand,
-        artboard: chosen,
+        logo_artboard: logoArtboard,
+        icon_artboard: iconArtboard,
         logo_box: logoBox,
-        selection_box: mark === "named" ? null : iconBox,
+        // icon_box is relative to whichever artboard holds the icon (the backend
+        // routes it). When the icon is a named layer in the logo, send no box.
+        icon_box: iconInLogo && mark === "named" ? null : iconBox,
         removed_colors: removed,
-        brand_a: active.brand_a,
-        brand_b: active.brand_b,
+        brand_a: logoBoard.brand_a,
+        brand_b: logoBoard.brand_b,
       });
       downloadBlob(blob, `${brand} Files.zip`);
       setDone(true);
@@ -127,20 +151,17 @@ export default function App() {
 
   function reset() {
     setResult(null);
-    setChosen(null);
-    setLogoBox(null);
-    setIconBox(null);
-    setRemoved([]);
-    setManual(null);
-    setSuggestion(null);
-    setUsedSuggestion(false);
+    setLogoArtboard(null);
+    setIconArtboard(null);
+    setTagged(false);
+    resetSelection();
     setDetecting(false);
-    setDetectNote("");
     setDone(false);
     setError(null);
   }
 
-  const currentStep = done ? 4 : !result ? 1 : chosen == null ? 2 : 3;
+  const currentStep = done ? 4 : !result ? 1 : !tagged ? 2 : 3;
+  const showMark = result && tagged && logoBoard;
 
   return (
     <div className="min-h-full">
@@ -156,179 +177,200 @@ export default function App() {
             Logo Package Engine
           </h1>
           <p className="text-sm text-slate-500">
-            Upload a primary logo → pick the artboard → mark the icon → confirm colors → download.
+            Upload your files → tag the Logo & Icon → mark regions → confirm colors → download.
           </p>
         </div>
 
-      {error && (
-        <Banner tone="error" onClose={() => setError(null)}>{error}</Banner>
-      )}
+        {error && (
+          <Banner tone="error" onClose={() => setError(null)}>{error}</Banner>
+        )}
 
-      {!result && (
-        <Card>
-          <Uploader onIngest={handleIngest} busy={busy} />
-        </Card>
-      )}
-
-      {result && chosen == null && (
-        <ArtboardChooser
-          artboards={result.artboards}
-          primaryIndex={result.primary_index}
-          onPick={(i) => pickArtboard(result, i)}
-        />
-      )}
-
-      {active && manual && (
-        <ManualFlag reasons={manual.reasons} onReset={reset} />
-      )}
-
-      {active && !manual && (
-        <div className="grid gap-6 lg:grid-cols-2">
+        {!result && (
           <Card>
-            <StepHeader n="2a" title="Mark logo & icon" />
-            {result.artboard_count > 1 && (
-              <button
-                onClick={() => setChosen(null)}
-                className="mb-2 text-xs text-pulse-600 underline"
-              >
-                ← {active.label} · change artboard
-              </button>
-            )}
-            <MarkTools
-              mark={mark}
-              setMark={setMark}
-              hasNamed={!!active.named_selection}
-              logoBox={logoBox}
-              iconBox={iconBox}
-              clearLogo={() => setLogoBox(null)}
-              clearIcon={() => setIconBox(null)}
-            />
-            {!usedSuggestion && !logoBox && !iconBox && (
-              <button
-                onClick={applySuggestion}
-                disabled={detecting}
-                className="mb-2 inline-flex items-center gap-1.5 rounded-lg border border-pulse-200 bg-pulse-50 px-3 py-1.5 text-xs font-medium text-pulse-700 hover:bg-pulse-100 disabled:opacity-60"
-              >
-                {detecting ? (
-                  <svg width="13" height="13" viewBox="0 0 24 24" className="animate-spin" fill="none">
-                    <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25" />
-                    <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-                  </svg>
-                ) : (
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M13 2L4.5 13.5H11l-1 8.5 9-12H12l1-8z" />
-                  </svg>
-                )}
-                {detecting ? "Reading the artboard…" : "Auto-detect logo & icon"}
-              </button>
-            )}
-            {usedSuggestion && (logoBox || iconBox) && (
-              <div className="mb-2 flex items-start justify-between gap-3 rounded-lg border border-pulse-200 bg-pulse-50 px-3 py-2 text-xs text-pulse-700">
-                <span>
-                  <span className="font-semibold">Auto-detected.</span> {detectNote}
-                </span>
-                <button
-                  onClick={() => { setLogoBox(null); setIconBox(null); setUsedSuggestion(false); setDetectNote(""); }}
-                  className="shrink-0 text-pulse-400 underline hover:text-pulse-600"
-                >
-                  clear
-                </button>
-              </div>
-            )}
-            {usedSuggestion && !logoBox && !iconBox && (
-              <div className="mb-2 flex items-start justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
-                <span>{detectNote || "Nothing to auto-detect — draw the boxes by hand."}</span>
-                <button
-                  onClick={() => { setUsedSuggestion(false); setDetectNote(""); }}
-                  className="shrink-0 text-slate-400 underline hover:text-slate-600"
-                >
-                  dismiss
-                </button>
-              </div>
-            )}
-            <p className="mb-2 text-xs text-slate-500">
-              {mark === "logo"
-                ? "Drag a box around the actual logo — use this for a brand-sheet / bento; everything outside is ignored."
-                : mark === "icon"
-                ? "Drag a box around the icon (optional). It must sit inside the logo region."
-                : "Using the file's detected Icon layer."}
-            </p>
-            <SvgPreview
-              workingSvg={active.working_svg}
-              viewbox={active.viewbox}
-              logoBox={logoBox}
-              iconBox={iconBox}
-              active={mark === "named" ? null : mark}
-              onBox={(b) => (mark === "logo" ? setLogoBox(b) : setIconBox(b))}
-            />
-            {active.named_selection?.overlap_warning && (
-              <Banner tone="warn">
-                Icon and wordmark overlap heavily — if the mark is fused into a
-                letter, this lockup may need manual handling (§9).
-              </Banner>
-            )}
+            <Uploader onIngest={handleIngest} busy={busy} />
           </Card>
+        )}
 
-          <Card>
-            <StepHeader n="2b" title="Confirm colors" />
-            <ColorConfirm
-              result={active}
-              removed={removed}
-              onToggle={(c) =>
-                setRemoved((r) => (r.includes(c) ? r.filter((x) => x !== c) : [...r, c]))
-              }
-            />
+        {result && !tagged && (
+          <ArtboardTagger
+            artboards={result.artboards}
+            files={result.files}
+            primaryIndex={result.primary_index}
+            logoArtboard={logoArtboard}
+            iconArtboard={iconArtboard}
+            onTag={onTag}
+            onContinue={onContinue}
+          />
+        )}
 
-            <div className="mt-6 border-t border-slate-200 pt-5">
-              <StepHeader n="3" title="Generate package" />
-              <label className="mb-3 block text-sm">
-                <span className="mb-1 block font-medium text-slate-600">Brand name</span>
-                <input
-                  className="w-full rounded-md border border-slate-300 px-3 py-2"
-                  value={brand}
-                  onChange={(e) => setBrand(e.target.value)}
-                />
-              </label>
-              <div className="mb-3 text-xs text-slate-500">
-                converter: {result.converter} · {active.is_gradient ? "gradient" : "solid"} recipes
-              </div>
-              <button
-                disabled={busy}
-                onClick={handleGenerate}
-                className="w-full rounded-md bg-pulse-500 py-2.5 font-medium text-white disabled:opacity-40"
-              >
-                {busy
-                  ? "Building package…"
-                  : mark !== "named" && !iconBox
-                  ? "Generate logo files (no icon) →"
-                  : "Generate & download .zip"}
-              </button>
-              {mark !== "named" && !iconBox && (
-                <p className="mt-2 text-xs text-slate-500">
-                  No icon box drawn — the package will contain the logo set only
-                  {logoBox ? " (from the marked logo region)" : ""}.
-                </p>
+        {showMark && manual && <ManualFlag reasons={manual.reasons} onReset={reset} />}
+
+        {showMark && !manual && (
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Card>
+              <StepHeader n="2a" title="Mark logo & icon" />
+              {result.artboard_count > 1 && (
+                <button
+                  onClick={() => setTagged(false)}
+                  className="mb-2 text-xs text-pulse-600 underline"
+                >
+                  ← {logoBoard.label} · change tags
+                </button>
               )}
-              {done && (
-                <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                  <p className="text-sm text-emerald-800">
-                    ✓ Downloaded <strong>{brand} Files.zip</strong>.
-                  </p>
-                  <button
-                    onClick={reset}
-                    className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-pulse-500 px-3.5 py-2 text-sm font-medium text-white hover:bg-pulse-600"
-                  >
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-                      <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+              <MarkTools
+                mark={mark}
+                setMark={setMark}
+                hasNamed={!!logoBoard.named_selection}
+                hasIconTool={iconInLogo}
+                logoBox={logoBox}
+                iconBox={iconBox}
+                clearLogo={() => setLogoBox(null)}
+                clearIcon={() => setIconBox(null)}
+              />
+              {!usedSuggestion && !logoBox && !iconBox && (
+                <button
+                  onClick={applySuggestion}
+                  disabled={detecting}
+                  className="mb-2 inline-flex items-center gap-1.5 rounded-lg border border-pulse-200 bg-pulse-50 px-3 py-1.5 text-xs font-medium text-pulse-700 hover:bg-pulse-100 disabled:opacity-60"
+                >
+                  {detecting ? (
+                    <svg width="13" height="13" viewBox="0 0 24 24" className="animate-spin" fill="none">
+                      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25" />
+                      <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
                     </svg>
-                    Generate new
+                  ) : (
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M13 2L4.5 13.5H11l-1 8.5 9-12H12l1-8z" />
+                    </svg>
+                  )}
+                  {detecting ? "Reading the artboard…" : "Auto-detect logo & icon"}
+                </button>
+              )}
+              {usedSuggestion && (logoBox || iconBox) && (
+                <div className="mb-2 flex items-start justify-between gap-3 rounded-lg border border-pulse-200 bg-pulse-50 px-3 py-2 text-xs text-pulse-700">
+                  <span>
+                    <span className="font-semibold">Auto-detected.</span> {detectNote}
+                  </span>
+                  <button
+                    onClick={() => { setLogoBox(null); setIconBox(null); setUsedSuggestion(false); setDetectNote(""); }}
+                    className="shrink-0 text-pulse-400 underline hover:text-pulse-600"
+                  >
+                    clear
                   </button>
                 </div>
               )}
-            </div>
-          </Card>
-        </div>
-      )}
+              <p className="mb-2 text-xs text-slate-500">
+                {mark === "logo"
+                  ? "Drag a box around the actual logo — use this for a brand-sheet / bento; everything outside is ignored."
+                  : mark === "icon"
+                  ? "Drag a box around the icon (optional). It must sit inside the logo region."
+                  : "Using the file's detected Icon layer."}
+              </p>
+              <SvgPreview
+                workingSvg={logoBoard.working_svg}
+                viewbox={logoBoard.viewbox}
+                logoBox={logoBox}
+                iconBox={iconInLogo ? iconBox : null}
+                active={mark === "named" ? null : mark === "icon" && !iconInLogo ? "logo" : mark}
+                onBox={(b) => (mark === "logo" ? setLogoBox(b) : iconInLogo ? setIconBox(b) : null)}
+              />
+              {logoBoard.named_selection?.overlap_warning && (
+                <Banner tone="warn">
+                  Icon and wordmark overlap heavily — if the mark is fused into a
+                  letter, this lockup may need manual handling (§9).
+                </Banner>
+              )}
+
+              {iconBoard && (
+                <div className="mt-5 border-t border-slate-200 pt-4">
+                  <div className="mb-1 flex items-center gap-1.5 text-sm font-medium text-slate-700">
+                    <span className="h-2 w-2 rounded-full bg-emerald-500" /> Icon source ·{" "}
+                    {iconBoard.label}
+                  </div>
+                  <p className="mb-2 text-xs text-slate-500">
+                    The whole artboard is the icon. Drag a box only to crop a region of it.
+                  </p>
+                  <SvgPreview
+                    workingSvg={iconBoard.working_svg}
+                    viewbox={iconBoard.viewbox}
+                    logoBox={null}
+                    iconBox={iconBox}
+                    active="icon"
+                    onBox={(b) => setIconBox(b)}
+                  />
+                  {iconBox && (
+                    <button
+                      onClick={() => setIconBox(null)}
+                      className="mt-1 text-xs text-slate-400 underline hover:text-slate-600"
+                    >
+                      clear icon region (use whole artboard)
+                    </button>
+                  )}
+                </div>
+              )}
+            </Card>
+
+            <Card>
+              <StepHeader n="2b" title="Confirm colors" />
+              <ColorConfirm
+                result={logoBoard}
+                removed={removed}
+                onToggle={(c) =>
+                  setRemoved((r) => (r.includes(c) ? r.filter((x) => x !== c) : [...r, c]))
+                }
+              />
+
+              <div className="mt-6 border-t border-slate-200 pt-5">
+                <StepHeader n="3" title="Generate package" />
+                <label className="mb-3 block text-sm">
+                  <span className="mb-1 block font-medium text-slate-600">Brand name</span>
+                  <input
+                    className="w-full rounded-md border border-slate-300 px-3 py-2"
+                    value={brand}
+                    onChange={(e) => setBrand(e.target.value)}
+                  />
+                </label>
+                <div className="mb-3 text-xs text-slate-500">
+                  converter: {result.converter} · {logoBoard.is_gradient ? "gradient" : "solid"} recipes
+                  {iconBoard ? ` · icon from ${iconBoard.label}` : ""}
+                </div>
+                <button
+                  disabled={busy}
+                  onClick={handleGenerate}
+                  className="w-full rounded-md bg-pulse-500 py-2.5 font-medium text-white disabled:opacity-40"
+                >
+                  {busy
+                    ? "Building package…"
+                    : !hasIcon(iconInLogo, iconBox, iconBoard, mark)
+                    ? "Generate logo files (no icon) →"
+                    : "Generate & download .zip"}
+                </button>
+                {!hasIcon(iconInLogo, iconBox, iconBoard, mark) && (
+                  <p className="mt-2 text-xs text-slate-500">
+                    No icon tagged or marked — the package will contain the logo set only
+                    {logoBox ? " (from the marked logo region)" : ""}.
+                  </p>
+                )}
+                {done && (
+                  <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                    <p className="text-sm text-emerald-800">
+                      ✓ Downloaded <strong>{brand} Files.zip</strong>.
+                    </p>
+                    <button
+                      onClick={reset}
+                      className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-pulse-500 px-3.5 py-2 text-sm font-medium text-white hover:bg-pulse-600"
+                    >
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+                        <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+                      </svg>
+                      Generate new
+                    </button>
+                  </div>
+                )}
+              </div>
+            </Card>
+          </div>
+        )}
       </main>
 
       <footer className="border-t border-slate-200 py-5 text-center text-xs text-slate-400">
@@ -338,7 +380,15 @@ export default function App() {
   );
 }
 
-function MarkTools({ mark, setMark, hasNamed, logoBox, iconBox, clearLogo, clearIcon }) {
+// An icon ships when a separate icon artboard is tagged, OR an icon box/named
+// layer is marked inside the logo artboard.
+function hasIcon(iconInLogo, iconBox, iconBoard, mark) {
+  if (iconBoard) return true;               // separate tagged icon artboard
+  if (!iconInLogo) return true;             // (defensive) icon on another board
+  return mark === "named" || !!iconBox;     // icon marked within the logo
+}
+
+function MarkTools({ mark, setMark, hasNamed, hasIconTool, logoBox, iconBox, clearLogo, clearIcon }) {
   const Tool = ({ id, label, dot }) => (
     <button
       onClick={() => setMark(id)}
@@ -354,7 +404,7 @@ function MarkTools({ mark, setMark, hasNamed, logoBox, iconBox, clearLogo, clear
     <div className="mb-2 flex flex-wrap items-center gap-2 text-sm">
       <div className="inline-flex rounded-md border border-slate-300 p-0.5">
         <Tool id="logo" label="Logo region" dot="bg-pulse-500" />
-        <Tool id="icon" label="Icon" dot="bg-emerald-500" />
+        {hasIconTool && <Tool id="icon" label="Icon" dot="bg-emerald-500" />}
         {hasNamed && <Tool id="named" label="Detected layer" />}
       </div>
       {logoBox && (
@@ -362,7 +412,7 @@ function MarkTools({ mark, setMark, hasNamed, logoBox, iconBox, clearLogo, clear
           clear logo
         </button>
       )}
-      {iconBox && (
+      {iconBox && hasIconTool && (
         <button onClick={clearIcon} className="text-xs text-slate-400 underline hover:text-slate-600">
           clear icon
         </button>

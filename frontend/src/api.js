@@ -1,9 +1,10 @@
 // Thin API client for the Logo Package Engine backend.
 
-export async function ingest({ ai, eps, brand }) {
+// Ingest one or MORE files at once. Every artboard of every file comes back so
+// the CSR can tag the Logo + Icon (possibly on different artboards/files).
+export async function ingest({ files, brand }) {
   const fd = new FormData();
-  fd.append("ai", ai);
-  if (eps) fd.append("eps", eps);
+  for (const f of files || []) fd.append("files", f);
   if (brand) fd.append("brand", brand);
   const res = await fetch("/ingest", { method: "POST", body: fd });
   if (!res.ok) {
