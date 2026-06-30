@@ -1,0 +1,48 @@
+name: keep-warm
+
+# Why this exists:
+# The app is deployed on Render's FREE plan, which spins the service DOWN after
+# ~15 minutes of no traffic. The next visitor then waits ~30-60s while it boots
+# back up — that's the "onrender" loading slideshow. Render serves that page
+# itself, before our app is running, so it can't be restyled; the only fix is to
+# keep the service awake. This workflow pings /health on a schedule so the
+# instance never goes idle. Free + unlimited on a public repo.
+#
+# Bulletproof alternative: Render's paid "Starter" plan is always-on (no
+# spin-down) — then this workflow is unnecessary.
+
+on:
+  schedule:
+    # Every 10 minutes. GitHub's scheduler is best-effort and can lag a few
+    # minutes under load, so 10 min keeps a safe margin under Render's 15-min
+    # idle window. (GitHub disables schedules after 60 days with no repo commits.)
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}   # allow a manual run from the Actions tab
+
+concurrency:
+  group: keep-warm
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping /health to keep the service awake
+        run: |
+          # Override the URL with a repo Variable named RENDER_URL if your
+          # service URL differs (Settings > Secrets and variables > Actions).
+          URL="${{ vars.RENDER_URL || 'https://logo-assets-generator.onrender.com' }}"
+          echo "Pinging $URL/health"
+          for i in 1 2 3; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 120 "$URL/health" || echo 000)
+            echo "attempt $i -> HTTP $code"
+            if [ "$code" = "200" ]; then
+              echo "service is awake"
+              exit 0
+            fi
+            sleep 15
+          done
+          # The ping itself triggers the wake-up; don't fail the run (and email a
+          # red X) just because the first cold hit was slow.
+          echo "::warning::/health did not return 200 after retries (service may have been cold-starting)"
