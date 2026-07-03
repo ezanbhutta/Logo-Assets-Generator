@@ -25,9 +25,11 @@ export default function ColorConfirm({ result, removed, onToggle }) {
                 style={{ background: s.value, textDecoration: isRemoved ? "line-through" : "none" }}
               />
               <span className={isRemoved ? "line-through" : ""}>{s.value}</span>
-              {s.brand && !isRemoved && (
+              {s.background && !isRemoved ? (
+                <span className="rounded bg-amber-100 px-1 text-[10px] uppercase text-amber-700" title="Authored background field">bg</span>
+              ) : s.brand && !isRemoved ? (
                 <span className="rounded bg-slate-100 px-1 text-[10px] uppercase text-slate-500">brand</span>
-              )}
+              ) : null}
             </button>
           );
         })}

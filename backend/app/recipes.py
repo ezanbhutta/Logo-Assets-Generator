@@ -110,6 +110,17 @@ def build_solid(report, mark: str) -> list["Treatment"]:
         slots += [Treatment(3, report.brand_a, "full"),
                   Treatment(4, report.brand_b, "full")]
 
+    # Authored background: when the logo was designed on a chromatic full-bleed
+    # field (a brand's cream / pastel), show the mark on that exact field — the
+    # brand's most authentic slide, and often more useful than a second generated
+    # brand-colour field. It takes slot 04; the adaptive 'full' guard keeps every
+    # colour that reads on the field and lifts only what would vanish. Fires only
+    # for the rare coloured-background source — a white page export leaves this
+    # None, so every other brand is untouched.
+    bg = getattr(report, "background", None)
+    if bg:
+        slots[3] = Treatment(4, bg, "full")
+
     slots += [
         Treatment(5, config.WHITE, "black"),    # black one-colour monochrome (on white)
         Treatment(6, config.BLACK, "white"),    # white one-colour monochrome (on black, reversed)
