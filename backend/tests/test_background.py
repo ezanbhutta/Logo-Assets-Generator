@@ -117,3 +117,14 @@ def test_near_neutral_offwhite_not_a_background():
     scaffolding, not a brand field — it stays stripped and unsurfaced."""
     offwhite = "#fffef9"                                 # saturation ≈0.02
     assert colors.detect(WorkingSVG.from_string(_bg_logo(offwhite))).background is None
+
+
+def test_light_saturated_cream_is_detected():
+    """The real GANG PUR regression: its cream field is `#fffccf` — very LIGHT
+    (~0.95 luminance) but clearly a warm tint (sat ≈0.19). A luminance-based
+    'near-white' cutoff wrongly rejected it; saturation is what tells a tint from
+    white, so a light-but-saturated field must still be detected."""
+    cream = "#fffccf"                                    # GANG PUR's actual field
+    assert colors.luminance(cream) > 0.92                # genuinely light...
+    assert colors.saturation(cream) > 0.15              # ...yet unmistakably tinted
+    assert colors.detect(WorkingSVG.from_string(_bg_logo(cream))).background == cream
