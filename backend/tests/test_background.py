@@ -95,3 +95,25 @@ def test_removed_background_not_used():
     the surfaced background, so it never drives a treatment."""
     r = colors.detect(WorkingSVG.from_string(CREAM_LOGO), exclude={"#f4f0c0"})
     assert r.background is None
+
+
+def _bg_logo(bg_hex: str) -> str:
+    return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" width="1000" height="1000">'
+            f'<rect x="0" y="0" width="1000" height="1000" fill="{bg_hex}"/>'
+            '<rect x="350" y="350" width="300" height="300" fill="#325137"/></svg>')
+
+
+def test_soft_cream_background_is_detected():
+    """A SOFTLY-tinted field (an oat/ivory that is only mildly saturated — the
+    common real case) is still recognized as an authored background. It reads as
+    intentional at a lower tint than a mark colour would need."""
+    soft = "#f2ecda"                                     # oat, saturation ≈0.10
+    assert colors.saturation(soft) < 0.15                # genuinely soft, not vivid
+    assert colors.detect(WorkingSVG.from_string(_bg_logo(soft))).background == soft
+
+
+def test_near_neutral_offwhite_not_a_background():
+    """A near-neutral off-white page rect (barely-there warmth, sat ≈0) is export
+    scaffolding, not a brand field — it stays stripped and unsurfaced."""
+    offwhite = "#fffef9"                                 # saturation ≈0.02
+    assert colors.detect(WorkingSVG.from_string(_bg_logo(offwhite))).background is None
