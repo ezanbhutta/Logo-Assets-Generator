@@ -83,10 +83,47 @@ def _brand_pair(report) -> tuple[str, str] | None:
     return report.brand_a, report.brand_b
 
 
+def _build_solid_with_background(report, bg: str) -> list["Treatment"]:
+    """The set for a logo AUTHORED ON A CHROMATIC FIELD (a brand's cream/pastel).
+
+    That field is a real brand colour, so the mark colour and the field are the
+    brand's true two-colour pair — and the owner's rule (learned from GANG PUR) is
+    to lead with the authored look and swap it:
+
+      01  the authored field   · the mark on its OWN field (green-on-cream) — the
+                                 PRIMARY, exactly as the brand is designed.
+      02  dark / black          · the same mark on the darkest shade (keep).
+      03  the mark's colour      · the FULL mark recoloured to the field colour on
+                                 the mark's own colour (a full cream mark on green).
+      04  white                 · the clean version on white (still a standard need).
+      05 · 06  the two monochromes (black-on-white, white-on-black).
+
+    The field for slot 03 is the mark's most prominent brand colour on which the
+    field colour reads (so the cream mark doesn't vanish); black is the fallback."""
+    field = next((h for h in report.solids
+                  if colors._is_brand_color(h) and colors.contrast_ratio(bg, h) >= 3.0), None)
+    if field is None:
+        field = report.brand_a if colors.contrast_ratio(bg, report.brand_a) >= 3.0 else config.BLACK
+    return [
+        Treatment(1, bg, "full"),                         # authored: mark on its own field
+        Treatment(2, _dark_background(report), "keep"),   # the same mark on dark / black
+        Treatment(3, field, "flat", color=bg),            # full field-colour mark on the mark's colour
+        Treatment(4, config.WHITE, "full"),               # the clean version on white
+        Treatment(5, config.WHITE, "black"),              # black one-colour monochrome
+        Treatment(6, config.BLACK, "white"),              # white one-colour monochrome (reversed)
+    ]
+
+
 def build_solid(report, mark: str) -> list["Treatment"]:
-    """The 5 with-background treatments for a SOLID logo/icon, per the owner's
+    """The 6 with-background treatments for a SOLID logo/icon, per the owner's
     trained recipe (see module docstring). ``mark`` is 'logo' | 'icon' — the set
     is identical (the same rule applies to icons)."""
+    # A logo authored on a chromatic field uses that field as its brand colour —
+    # lead with the authored look and swap it (owner rule, learned from GANG PUR).
+    bg = getattr(report, "background", None)
+    if bg:
+        return _build_solid_with_background(report, bg)
+
     slots = [
         Treatment(1, config.WHITE, "full"),               # primary, exactly as authored
         Treatment(2, _dark_background(report), "keep"),   # the SAME logo on dark / black
@@ -109,17 +146,6 @@ def build_solid(report, mark: str) -> list["Treatment"]:
         # adaptive guard hold contrast (an exception to refine over time).
         slots += [Treatment(3, report.brand_a, "full"),
                   Treatment(4, report.brand_b, "full")]
-
-    # Authored background: when the logo was designed on a chromatic full-bleed
-    # field (a brand's cream / pastel), show the mark on that exact field — the
-    # brand's most authentic slide, and often more useful than a second generated
-    # brand-colour field. It takes slot 04; the adaptive 'full' guard keeps every
-    # colour that reads on the field and lifts only what would vanish. Fires only
-    # for the rare coloured-background source — a white page export leaves this
-    # None, so every other brand is untouched.
-    bg = getattr(report, "background", None)
-    if bg:
-        slots[3] = Treatment(4, bg, "full")
 
     slots += [
         Treatment(5, config.WHITE, "black"),    # black one-colour monochrome (on white)

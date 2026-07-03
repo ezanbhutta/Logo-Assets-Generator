@@ -169,23 +169,37 @@ def _is_brand_color(hex_color: str) -> bool:
     return saturation(hex_color) >= _NEUTRAL_SAT and luminance(hex_color) < config.NEAR_WHITE_LUMINANCE
 
 
+# A full-bleed field reads as an intentional, authored background at a LOWER
+# tint than a mark colour needs — a soft cream (#f2ecda, sat ≈0.10) or an even
+# gentler oat/ivory is clearly not white, yet a mark that pale would be a stray.
+# So backgrounds get their own, looser saturation floor; true white/gray page
+# rects (sat ≈0) still fall below it and stay stripped/unsurfaced.
+_BG_MIN_SAT = 0.05
+
+
+def _is_background_color(hex_color: str) -> bool:
+    """Eligible as an authored background: clearly tinted (not white/near-white,
+    not a neutral gray), even if only softly so."""
+    return saturation(hex_color) >= _BG_MIN_SAT and luminance(hex_color) < config.NEAR_WHITE_LUMINANCE
+
+
 def _chromatic_background(model: WorkingSVG, excl: set[str]) -> str | None:
     """The color of the artwork's authored full-bleed field, or None.
 
     pdf2svg/Illustrator exports add a full-page rect; ``WorkingSVG._mark_background``
     flags it and strips it from the artwork (so the mark centers tightly and its
     palette isn't polluted). A WHITE / near-white page rect is pure export
-    scaffolding — it stays stripped and unsurfaced. But a **chromatic** full-bleed
+    scaffolding — it stays stripped and unsurfaced. But a **tinted** full-bleed
     field (a brand's cream / pastel background) is a real brand color the designer
     chose: return it so it's surfaced in the palette and can drive the authored-
-    background treatment. Picks the most prominent chromatic background when the
+    background treatment. Picks the most prominent tinted background when the
     export stacked more than one; a CSR-removed color (``excl``) is ignored."""
     cands: list[tuple[float, str]] = []
     for n in model.nodes:
         if not n.is_background:
             continue
         hx = normalize_hex(n.fill)
-        if hx and _is_brand_color(hx) and hx not in excl:
+        if hx and _is_background_color(hx) and hx not in excl:
             cands.append((n.area, hx))
     return max(cands)[1] if cands else None
 

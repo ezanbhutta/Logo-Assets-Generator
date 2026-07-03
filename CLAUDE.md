@@ -101,6 +101,21 @@ a static table, because slots 02–04 depend on the brand colors. The five slots
   monochrome (reversed).** The owner ships **both** monochromes as their own
   slides. (The transparent set also carries both one-color marks.)
 
+- **AUTHORED-BACKGROUND set (owner rule, learned from GANG PUR).** When the source
+  is a mark drawn on a **chromatic full-bleed field** (a brand's cream/pastel — a
+  soft cream counts, the tint bar is looser than a mark color's:
+  `colors._is_background_color`), that field **is** a real brand color, so the mark
+  color and the field are the brand's true two-color pair. The set **leads with the
+  authored look and swaps it** (`recipes._build_solid_with_background`): **01 = the
+  mark on its OWN field** (green-on-cream — the PRIMARY is on the cream, *not*
+  white) · 02 = the same mark on the darkest shade/black · **03 = the FULL mark
+  recolored to the field color on the mark's own color** (a full cream mark on
+  green — `flat`) · 04 = the clean version on white (still a standard need) · 05·06
+  the two monochromes. The field is stripped from the mark geometry (mark still
+  centers tightly) but surfaced in the confirm UI as a **`bg`** swatch; a CSR who
+  decides it was export scaffolding removes it and the set reverts to the standard
+  solid recipe. White/near-white page rects stay stripped and never trigger this.
+
 - **Gradient Logo/Icon (unchanged designer standard):** 01 white/full · 02 **white
   knockout on a rebuilt full-bleed gradient** (hero) · 03 **black/white knockout**
   (Orova; a gradient's tone shifts across the mark, so only white reads cleanly on

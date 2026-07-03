@@ -174,10 +174,10 @@ def test_colour_swap_clash_falls_back_to_mono_knockout():
 
 
 # --- authored background field (GANG PUR's cream) ----------------------------
-def test_authored_background_becomes_a_field():
-    """A logo designed on a chromatic full-bleed field (cream) gets that exact
-    field as slot 04 — the brand's authentic look, mark readable on the cream —
-    instead of a second generated brand-colour field."""
+def test_authored_background_leads_and_swaps():
+    """A logo designed on a chromatic field (cream) uses that field as a real
+    brand colour: the PRIMARY (slot 01) is the mark on its own cream field, and a
+    swap slide (slot 03) is the FULL mark recoloured cream on the green field."""
     cream, green = "#f4f0c0", "#325137"
     svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" width="1000" height="1000">'
            f'<rect x="0" y="0" width="1000" height="1000" fill="{cream}"/>'
@@ -186,14 +186,28 @@ def test_authored_background_becomes_a_field():
     m = WorkingSVG.from_string(svg)
     rep = colors.detect(m)
     assert rep.background == cream
-    slot4 = _solid(rep)[3]
-    assert slot4.background == cream and slot4.recolor == "full"
+    rec = _solid(rep)
+    assert len(rec) == 6
+
+    # slot 01 — the authored primary: green mark on the cream field
+    s1 = rec[0]
+    assert s1.background == cream and s1.recolor == "full"
     sel = selection.select_by_box(m, (300, 250, 400, 500))
     ctx = treatments.build_context(m, sel, rep)
-    img = render(treatments.render_variant(ctx, "logo", slot4, True)).convert("RGB")
-    assert near(_bg_pixel(treatments.render_variant(ctx, "logo", slot4, True)), (244, 240, 192))
-    greens = sum(near(img.getpixel((x, MID)), (50, 81, 55), tol=40) for x in range(0, CANVAS_W, 4))
-    assert greens > 0, "the green mark should read on its own cream field"
+    out1 = treatments.render_variant(ctx, "logo", s1, True)
+    assert near(_bg_pixel(out1), (244, 240, 192))                     # cream field
+    img1 = render(out1).convert("RGB")
+    assert sum(near(img1.getpixel((x, MID)), (50, 81, 55), tol=40)
+               for x in range(0, CANVAS_W, 4)) > 0, "green mark should read on cream"
+
+    # slot 03 — the swap: full cream mark on the green field
+    s3 = rec[2]
+    assert s3.recolor == "flat" and s3.color == cream and s3.background == green
+    out3 = treatments.render_variant(ctx, "logo", s3, True)
+    assert near(_bg_pixel(out3), (50, 81, 55), tol=40)               # green field
+    img3 = render(out3).convert("RGB")
+    assert sum(near(img3.getpixel((x, MID)), (244, 240, 192), tol=40)
+               for x in range(0, CANVAS_W, 4)) > 0, "cream mark should read on green"
 
 
 # --- slot 05 + transparent monos ---------------------------------------------
