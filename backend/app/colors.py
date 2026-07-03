@@ -170,17 +170,22 @@ def _is_brand_color(hex_color: str) -> bool:
 
 
 # A full-bleed field reads as an intentional, authored background at a LOWER
-# tint than a mark colour needs — a soft cream (#f2ecda, sat ≈0.10) or an even
-# gentler oat/ivory is clearly not white, yet a mark that pale would be a stray.
-# So backgrounds get their own, looser saturation floor; true white/gray page
-# rects (sat ≈0) still fall below it and stay stripped/unsurfaced.
+# tint than a mark colour needs — a soft cream is clearly not white, yet a mark
+# that pale would be a stray. So backgrounds get their own saturation floor;
+# true white / gray page rects (sat ≈0) fall below it and stay stripped.
 _BG_MIN_SAT = 0.05
 
 
 def _is_background_color(hex_color: str) -> bool:
-    """Eligible as an authored background: clearly tinted (not white/near-white,
-    not a neutral gray), even if only softly so."""
-    return saturation(hex_color) >= _BG_MIN_SAT and luminance(hex_color) < config.NEAR_WHITE_LUMINANCE
+    """Eligible as an authored background: clearly tinted (has real hue), even if
+    very light.
+
+    Unlike a mark colour there is deliberately NO upper-luminance cutoff — a
+    brand's cream field is routinely very pale (GANG PUR's ``#fffccf`` sits at
+    ~0.95 luminance) yet is unmistakably a warm tint, not white. Saturation alone
+    tells a real tint from a white / near-white / neutral-gray page rect (those
+    sit at ~0 saturation and fall below the floor)."""
+    return saturation(hex_color) >= _BG_MIN_SAT
 
 
 def _chromatic_background(model: WorkingSVG, excl: set[str]) -> str | None:

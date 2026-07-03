@@ -104,9 +104,15 @@ def _build_solid_with_background(report, bg: str) -> list["Treatment"]:
                   if colors._is_brand_color(h) and colors.contrast_ratio(bg, h) >= 3.0), None)
     if field is None:
         field = report.brand_a if colors.contrast_ratio(bg, report.brand_a) >= 3.0 else config.BLACK
+    # Slot-02 dark field is normally the darkest shade, but for a ONE-colour mark
+    # that darkest shade IS the slot-03 swap field — fall back to BLACK so 02 and
+    # 03 aren't two near-identical slides.
+    dark = _dark_background(report)
+    if dark == field:
+        dark = config.BLACK
     return [
         Treatment(1, bg, "full"),                         # authored: mark on its own field
-        Treatment(2, _dark_background(report), "keep"),   # the same mark on dark / black
+        Treatment(2, dark, "keep"),                       # the same mark on dark / black
         Treatment(3, field, "flat", color=bg),            # full field-colour mark on the mark's colour
         Treatment(4, config.WHITE, "full"),               # the clean version on white
         Treatment(5, config.WHITE, "black"),              # black one-colour monochrome
