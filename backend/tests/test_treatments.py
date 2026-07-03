@@ -173,6 +173,29 @@ def test_colour_swap_clash_falls_back_to_mono_knockout():
     assert blacks > 0, "black mark expected on the lighter brand field"
 
 
+# --- authored background field (GANG PUR's cream) ----------------------------
+def test_authored_background_becomes_a_field():
+    """A logo designed on a chromatic full-bleed field (cream) gets that exact
+    field as slot 04 — the brand's authentic look, mark readable on the cream —
+    instead of a second generated brand-colour field."""
+    cream, green = "#f4f0c0", "#325137"
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" width="1000" height="1000">'
+           f'<rect x="0" y="0" width="1000" height="1000" fill="{cream}"/>'
+           f'<rect x="350" y="300" width="300" height="300" fill="{green}"/>'
+           f'<rect x="300" y="650" width="400" height="70" fill="{green}"/></svg>')
+    m = WorkingSVG.from_string(svg)
+    rep = colors.detect(m)
+    assert rep.background == cream
+    slot4 = _solid(rep)[3]
+    assert slot4.background == cream and slot4.recolor == "full"
+    sel = selection.select_by_box(m, (300, 250, 400, 500))
+    ctx = treatments.build_context(m, sel, rep)
+    img = render(treatments.render_variant(ctx, "logo", slot4, True)).convert("RGB")
+    assert near(_bg_pixel(treatments.render_variant(ctx, "logo", slot4, True)), (244, 240, 192))
+    greens = sum(near(img.getpixel((x, MID)), (50, 81, 55), tol=40) for x in range(0, CANVAS_W, 4))
+    assert greens > 0, "the green mark should read on its own cream field"
+
+
 # --- slot 05 + transparent monos ---------------------------------------------
 def test_monochrome_slots_are_black_on_white_and_white_on_black(solid_model):
     """The owner ships BOTH monochromes as their own slides: 05 = black mark on

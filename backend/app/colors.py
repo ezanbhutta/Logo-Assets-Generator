@@ -169,6 +169,27 @@ def _is_brand_color(hex_color: str) -> bool:
     return saturation(hex_color) >= _NEUTRAL_SAT and luminance(hex_color) < config.NEAR_WHITE_LUMINANCE
 
 
+def _chromatic_background(model: WorkingSVG, excl: set[str]) -> str | None:
+    """The color of the artwork's authored full-bleed field, or None.
+
+    pdf2svg/Illustrator exports add a full-page rect; ``WorkingSVG._mark_background``
+    flags it and strips it from the artwork (so the mark centers tightly and its
+    palette isn't polluted). A WHITE / near-white page rect is pure export
+    scaffolding — it stays stripped and unsurfaced. But a **chromatic** full-bleed
+    field (a brand's cream / pastel background) is a real brand color the designer
+    chose: return it so it's surfaced in the palette and can drive the authored-
+    background treatment. Picks the most prominent chromatic background when the
+    export stacked more than one; a CSR-removed color (``excl``) is ignored."""
+    cands: list[tuple[float, str]] = []
+    for n in model.nodes:
+        if not n.is_background:
+            continue
+        hx = normalize_hex(n.fill)
+        if hx and _is_brand_color(hx) and hx not in excl:
+            cands.append((n.area, hx))
+    return max(cands)[1] if cands else None
+
+
 def brand_tint(chromatic: list[str]) -> str | None:
     """A soft, pale in-scheme background — a light tint (≈10% color in white) of
     the brand's most vivid color — for the mono-black slot.
@@ -204,6 +225,7 @@ class ColorReport:
     brand_a: str = config.BLACK
     brand_b: str = config.BLACK
     tint: str | None = None             # soft in-scheme tint bg (None -> use white)
+    background: str | None = None       # chromatic authored full-bleed field (None -> none)
     swatches: list[dict] = field(default_factory=list)    # for the confirm UI
 
     @property
@@ -381,6 +403,10 @@ def detect(model: WorkingSVG, lpids: list[str] | None = None,
     chromatic = [h for h in solids if _is_brand_color(h) and h not in excl]
     tint = brand_tint(chromatic)
 
+    # Surface a chromatic authored background (a brand's cream/pastel field). Only
+    # for whole-artboard detection (a color-subset request has no page context).
+    background = _chromatic_background(model, excl) if lpids is None else None
+
     if reasons:
         classification = "manual"
     elif grad_ids:
@@ -397,6 +423,11 @@ def detect(model: WorkingSVG, lpids: list[str] | None = None,
         })
     for gid in grad_ids:
         swatches.append({"type": "gradient", "value": gid, "brand": True})
+    if background and background not in solids:
+        # Show the authored field in the confirm UI, flagged so the CSR can drop
+        # it if it's actually export scaffolding (a rare colored page rect).
+        swatches.append({"type": "solid", "value": background, "brand": True,
+                         "background": True, "luminance": round(luminance(background), 3)})
 
     return ColorReport(
         classification=classification,
@@ -406,5 +437,6 @@ def detect(model: WorkingSVG, lpids: list[str] | None = None,
         brand_a=brand_a,
         brand_b=brand_b,
         tint=tint,
+        background=background,
         swatches=swatches,
     )

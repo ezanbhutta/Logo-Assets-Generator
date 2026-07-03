@@ -55,3 +55,43 @@ def test_real_logo_not_all_background():
                 '<rect x="0" y="0" width="100" height="100" fill="#ec1c24"/></svg>')
     m = WorkingSVG.from_string(only_big)
     assert len(m.ink_nodes) == 1                         # kept, not dropped
+
+
+# A GANG PUR-style file: a dark-green mark on an authored CREAM full-bleed field
+# (the brand's signature background), plus a slightly darker green detail.
+CREAM_LOGO = (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" width="1000" height="1000">'
+    '<rect x="0" y="0" width="1000" height="1000" fill="#f4f0c0"/>'         # cream field
+    '<rect x="350" y="250" width="300" height="300" fill="#325137"/>'      # green icon
+    '<rect x="300" y="620" width="400" height="70" fill="#325137"/>'       # green wordmark
+    '<rect x="470" y="270" width="60" height="60" fill="#1b2d1e"/>'        # dark-green detail
+    '</svg>'
+)
+
+
+def test_chromatic_background_surfaced_as_brand_color():
+    """A chromatic authored field (cream) is detected and surfaced — visible in
+    the swatches and available to the recipe — WITHOUT polluting the mark's own
+    palette or brand ranking (it stays out of `solids`)."""
+    r = colors.detect(WorkingSVG.from_string(CREAM_LOGO))
+    assert r.background == "#f4f0c0"                      # the cream field, surfaced
+    assert "#f4f0c0" not in r.solids                      # not counted as mark ink
+    bg_sw = [s for s in r.swatches if s.get("background")]
+    assert len(bg_sw) == 1 and bg_sw[0]["value"] == "#f4f0c0"
+    assert r.brand_a in ("#325137", "#1b2d1e")            # brand ranking still the greens
+    assert r.brand_b in ("#325137", "#1b2d1e")
+
+
+def test_white_background_still_stripped_and_unsurfaced():
+    """A white/near-white page rect is export scaffolding — it stays stripped and
+    is never surfaced as a background color (preserves the existing behavior)."""
+    r = colors.detect(_model())                          # PAGE_LOGO has a white page rect
+    assert r.background is None
+    assert not any(s.get("background") for s in r.swatches)
+
+
+def test_removed_background_not_used():
+    """A CSR who removes the cream (it was scaffolding after all) drops it from
+    the surfaced background, so it never drives a treatment."""
+    r = colors.detect(WorkingSVG.from_string(CREAM_LOGO), exclude={"#f4f0c0"})
+    assert r.background is None
