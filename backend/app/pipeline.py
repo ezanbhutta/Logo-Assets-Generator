@@ -276,24 +276,24 @@ def _two_tone_ctx(ctx, mark: str):
 
 
 def _alternates(ctx, mark: str, t: Treatment) -> list[tuple[Treatment, object]]:
-    """(treatment, context) replacements for a would-be DUPLICATE slide, in
-    preference order (the Inclement rule — a 1-color yellow brand rendered slots
-    02 and 04 as the same full-yellow-on-black):
+    """(treatment, context) replacements for a would-be DUPLICATE slide (the
+    Inclement rule — a 1-color yellow brand rendered slots 02 and 04 as the same
+    full-yellow-on-black).
 
-    1. the **two-tone dark slide** — the icon keeps its brand color, the
-       wordmark goes WHITE (yellow mark + white text on black). The icon/text
-       split is the marked one, or derived when the icon lives on another
-       artboard.
-    2. the mark verbatim on a **deep in-scheme shade** of the brand color —
-       last resort only (an icon-only set has no text to whiten)."""
-    alts: list[tuple[Treatment, object]] = []
+    The ONLY replacement is the **two-tone dark slide** — the icon keeps its
+    brand color, the wordmark goes WHITE (black field · yellow icon · white
+    text). The icon/text split is the marked one, or derived when the icon
+    lives on another artboard.
+
+    There is deliberately NO derived-color fallback: a shade_of(brand) field
+    read as olive — a color that is NOT in the logo (owner rule: substitutions
+    stay in the logo's scheme; the engine never invents an outside color).
+    Where no two-tone exists — a 1-color ICON set, whose yellow/black/white
+    palette simply has no 6th distinct composition — the original ships."""
     tt = _two_tone_ctx(ctx, mark)
-    if tt is not None:
-        alts.append((Treatment(t.index, t.background, "split"), tt))
-    brand = ctx.report.brand_a
-    if brand and colors.saturation(brand) >= 0.10:
-        alts.append((Treatment(t.index, colors.shade_of(brand), "keep"), ctx))
-    return alts
+    if tt is None:
+        return []
+    return [(Treatment(t.index, t.background, "split"), tt)]
 
 
 def _render_set(ctx, mark: str, stem: str, is_gradient: bool, builder: PackageBuilder) -> None:

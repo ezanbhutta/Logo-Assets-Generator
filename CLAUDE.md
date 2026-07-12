@@ -127,15 +127,16 @@ a static table, because slots 02–04 depend on the brand colors. The five slots
   (brand-B black field) to the SAME full-yellow-on-black. The pipeline now
   compares each slide's small render perceptually (`pipeline._looks_same` —
   strict ~7% tolerance, looser in deep shadow where `#000013` vs `#000000` is
-  invisible) and replaces a would-be duplicate with the designer alternate, in
-  order: (1) the **two-tone dark slide** — icon keeps its brand color, wordmark
-  goes WHITE (BLACK field · yellow icon · white text). The icon/text split is
-  the marked one, or **derived** (largest-gap cut, most-square side) when the
-  icon was tagged on a separate artboard — the olive-shade slide that shipped in
-  that flow was wrong · (2) the mark verbatim on a **deep in-scheme shade** of
-  the brand color — LAST RESORT only (an icon-only set has no text to whiten).
-  Slot numbering/file counts never change; if every alternate also collides,
-  the original ships (never fail the package over the dedupe).
+  invisible) and replaces a would-be duplicate with the ONLY designer alternate:
+  the **two-tone dark slide** — icon keeps its brand color, wordmark goes WHITE
+  (BLACK field · yellow icon · white text). The icon/text split is the marked
+  one, or **derived** (largest-gap cut, most-square side) when the icon was
+  tagged on a separate artboard. There is **no derived-color fallback**: a
+  `shade_of(brand)` field read as olive — a color NOT in the logo — and the
+  owner rejected it (the no-outside-colors rule applies to backgrounds too).
+  Where no two-tone exists (a 1-color ICON set: yellow/black/white has only 5
+  distinct compositions) the original ships as-is. Slot numbering/file counts
+  never change; the dedupe can never fail the package.
 
 - **AUTHORED-BACKGROUND set (owner rule, learned from GANG PUR).** When the source
   is a mark drawn on a **chromatic full-bleed field** (a brand's cream/pastel — a

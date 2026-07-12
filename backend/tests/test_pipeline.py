@@ -123,15 +123,25 @@ def test_no_duplicate_slides_two_tone_dark(tmp_path):
     # 04 is the two-tone: yellow icon kept + white wordmark on the dark field
     assert yellow in logo4 and "#ffffff" in logo4
 
-    # every with-bg slide in each set is visually unique (Logo 02 vs 04 was the
-    # duplicate pair; the Icon set resolves its own via the deep-shade field)
-    for stem in ("Logo", "Icon"):
-        imgs = [_slide_image((root / "SVG" / f"{stem} {i:02d}.svg").read_text())
-                for i in range(1, 7)]
-        for i in range(6):
-            for j in range(i + 1, 6):
-                assert not _looks_same(imgs[i], imgs[j]), \
-                    f"{stem} {i+1:02d} and {stem} {j+1:02d} read as the same slide"
+    # every with-bg LOGO slide is visually unique (02 vs 04 was the pair)
+    imgs = [_slide_image((root / "SVG" / f"Logo {i:02d}.svg").read_text())
+            for i in range(1, 7)]
+    for i in range(6):
+        for j in range(i + 1, 6):
+            assert not _looks_same(imgs[i], imgs[j]), \
+                f"Logo {i+1:02d} and Logo {j+1:02d} read as the same slide"
+
+    # The ICON set has no wordmark to whiten, and a 1-color yellow/black/white
+    # palette has no 6th distinct composition — the original ships rather than
+    # an INVENTED color: every icon-slide field stays in the logo's scheme
+    # (no olive shade_of field, the owner's no-outside-colors rule).
+    from conftest import render, near
+    scheme = [(255, 255, 255), (0, 0, 0), (10, 10, 10), (247, 196, 0)]
+    for i in range(1, 7):
+        isvg = (root / "SVG" / f"Icon {i:02d}.svg").read_text()
+        bg = render(isvg).convert("RGB").getpixel((10, 10))
+        assert any(near(bg, c, tol=25) for c in scheme), \
+            f"Icon {i:02d} field {bg} is not a color from the logo"
 
 
 def test_two_tone_derived_when_icon_not_marked_in_logo(tmp_path):
