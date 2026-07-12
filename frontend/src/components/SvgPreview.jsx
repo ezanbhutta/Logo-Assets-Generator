@@ -11,7 +11,7 @@ import { useRef, useState, useEffect } from "react";
 // mark lands on it server-side. Never hand-rolled rect math, and never a
 // separate viewBox guess — those silently mis-mapped when the converter's scale
 // differed from the `viewbox` prop.
-export default function SvgPreview({ workingSvg, viewbox, logoBox, iconBox, active, onBox }) {
+export default function SvgPreview({ workingSvg, viewbox, logoBox, iconBox, textBox, active, onBox }) {
   const hostRef = useRef(null);
   const start = useRef(null);
   const [drag, setDrag] = useState(null); // {x,y,w,h} in USER space
@@ -114,6 +114,7 @@ export default function SvgPreview({ workingSvg, viewbox, logoBox, iconBox, acti
 
   const logoStyle = logoBox && boxStyle(logoBox);
   const iconStyle = iconBox && boxStyle(iconBox);
+  const textStyle = textBox && boxStyle(textBox);
   const dragStyle = drag && boxStyle([drag.x, drag.y, drag.w, drag.h]);
 
   return (
@@ -132,10 +133,15 @@ export default function SvgPreview({ workingSvg, viewbox, logoBox, iconBox, acti
       >
         {logoStyle && <BoxRect style={logoStyle} color="pulse" label="Logo" />}
         {iconStyle && <BoxRect style={iconStyle} color="emerald" label="Icon" />}
+        {textStyle && <BoxRect style={textStyle} color="amber" label="Text" />}
         {dragStyle && (
           <div
             className={`absolute border-2 ${
-              active === "icon" ? "border-emerald-500 bg-emerald-500/10" : "border-pulse-500 bg-pulse-500/10"
+              active === "icon"
+                ? "border-emerald-500 bg-emerald-500/10"
+                : active === "text"
+                ? "border-amber-500 bg-amber-500/10"
+                : "border-pulse-500 bg-pulse-500/10"
             }`}
             style={dragStyle}
           />
@@ -149,6 +155,8 @@ function BoxRect({ style, color, label }) {
   const c =
     color === "emerald"
       ? "border-emerald-500 bg-emerald-500/5 text-emerald-700"
+      : color === "amber"
+      ? "border-amber-500 bg-amber-500/5 text-amber-700"
       : "border-pulse-500 bg-pulse-500/5 text-pulse-700";
   return (
     <div className={`absolute border-2 ${c}`} style={style}>

@@ -54,6 +54,7 @@ NEAR_BLACK_LUMINANCE = 0.06
 # --- Naming (§5.3) -----------------------------------------------------------
 ICON_STEM = "Icon"
 LOGO_STEM = "Logo"
+WORDMARK_STEM = "Wordmark"   # the typography-only set (marked via the Text box)
 
 # --- AI segmentation (vision-in-the-loop) -----------------------------------
 # When ANTHROPIC_API_KEY is set, the "Auto-detect" button renders the artboard

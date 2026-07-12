@@ -192,14 +192,16 @@ TRANSPARENT_ICON = [
 
 
 def with_bg_recipes(mark: str, report, is_gradient: bool) -> list["Treatment"]:
-    """Return the 5 with-background treatments for `mark` ('icon'|'logo'). The
-    SOLID set is built from the logo's real palette (`report`); the GRADIENT set
-    is the fixed designer standard."""
+    """Return the with-background treatments for `mark` ('icon'|'logo'|
+    'wordmark'). The SOLID set is built from the logo's real palette (`report`);
+    the GRADIENT set is the fixed designer standard."""
     if is_gradient:
         return GRADIENT_ICON if mark == "icon" else GRADIENT_LOGO
     return build_solid(report, mark)
 
 
 def transparent_recipes(mark: str) -> list["Treatment"]:
-    """Return the transparent treatments for `mark` ('icon'|'logo')."""
-    return TRANSPARENT_ICON if mark == "icon" else TRANSPARENT_LOGO
+    """Return the transparent treatments for `mark` ('icon'|'logo'|'wordmark').
+    The wordmark (typography-only) set has no icon inside it, so the logo's
+    `split` slot would be a duplicate — it uses the 3-slot icon shape."""
+    return TRANSPARENT_ICON if mark in ("icon", "wordmark") else TRANSPARENT_LOGO

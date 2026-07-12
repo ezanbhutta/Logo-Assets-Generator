@@ -51,12 +51,13 @@ class BoxMiss(Exception):
     stays alive for the retry. Carries the received box and the artwork extent
     so the error itself diagnoses a coordinate-mapping problem."""
     def __init__(self, box: str, received=None, artwork=None):
-        self.box = box                       # 'logo' | 'icon'
+        self.box = box                       # 'logo' | 'icon' | 'wordmark'
         self.received = [round(v, 1) for v in received] if received else None
         self.artwork = [round(v, 1) for v in artwork] if artwork else None
+        color = {"logo": "purple", "icon": "green", "wordmark": "amber"}.get(box, "marked")
         super().__init__(
             f"The {box} box doesn't cover any artwork — adjust the "
-            f"{'purple' if box == 'logo' else 'green'} box and generate again.")
+            f"{color} box and generate again.")
 
 
 # --- box selection -----------------------------------------------------------

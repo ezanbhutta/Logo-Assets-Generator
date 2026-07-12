@@ -69,6 +69,16 @@ logo delivery package as a `.zip`. Upload → zip out. No DB, no auth.
   (`safe_brand`) and de-duped against `Logo`/`Icon`/each other (`Logo` → `Logo 2`)
   so no set can overwrite another. API: `extra_marks: [{artboard, name, box?}]`
   (`pipeline.ExtraLockup`); UI: a "+ also ship as…" select on each artboard card.
+- **WORDMARK / typography-only set (owner feature).** A third **Text** box tool
+  (amber) on the logo preview marks the text-only region; it ships as its own
+  `Wordmark 01…` set the way the icon box ships the Icon set. Logo-shaped
+  with-bg slides (1920×1080, 60%, 6 slots from the shared palette) + a **3-slot**
+  transparent set (full/white/black — a wordmark has no icon, the `split` slot
+  would be a duplicate) = 27 files. A missed Text box refuses with 422
+  `box_miss` (`box: "wordmark"`, amber). The stem `Wordmark` is reserved (an
+  extra lockup also named "Wordmark" becomes `Wordmark 2`). API:
+  `wordmark_box` on /generate; a separate wordmark ARTBOARD still ships via the
+  extra-lockup "Wordmark" preset.
 - **Ignore extras** found in reference zips — social cover photos
   (Facebook/LinkedIn/Twitter-X/YouTube), brand guidelines, business cards,
   Instagram templates, **iconography sets**, per-variant EPS, AI/EPS-in-folders,
