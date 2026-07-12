@@ -16,7 +16,7 @@ from .config import (ICON_STEM, LOGO_STEM, safe_brand, variant_filename)
 from .exporters import (write_svg, write_jpg, write_pdf, write_png_transparent)
 from .ingest import IngestError
 from .packager import PackageBuilder
-from .recipes import with_bg_recipes, transparent_recipes
+from .recipes import Treatment, with_bg_recipes, transparent_recipes
 from .selection import Selection
 from .svg_model import WorkingSVG
 
@@ -211,10 +211,80 @@ class GenerateResult:
     include_icon: bool = True
 
 
+def _slide_image(svg: str):
+    """A slide's small perceptual render (48px wide, RGB) for duplicate
+    comparison. None when the render fails (the slide is then treated as
+    unique — never block packaging on the dedupe)."""
+    try:
+        import io
+        import cairosvg
+        from PIL import Image
+        png = cairosvg.svg2png(bytestring=svg.encode("utf-8"), output_width=192)
+        img = Image.open(io.BytesIO(png)).convert("RGB")
+        return img.resize((48, max(1, round(img.height * 48 / img.width))))
+    except Exception:
+        return None
+
+
+def _looks_same(a, b) -> bool:
+    """Do two slides read as THE SAME slide to a designer's eye? True when no
+    downsampled pixel differs by more than ~7% on any channel — catches both
+    byte-identical renders and imperceptibly-different ones (a `#0a0a0a` field
+    vs `#000000` is still "the black slide"; Inclement's duplicate pair). Deep
+    shadows get a looser bar (the eye can't split `#000013` from `#000000`, an
+    authored blue-black vs the black field) while light values stay strict, so
+    a soft tint field never collapses into white. Any real difference — a white
+    vs yellow wordmark — moves whole regions far past both bars."""
+    if a is None or b is None or a.size != b.size:
+        return False
+    for x, y in zip(a.tobytes(), b.tobytes()):
+        d = abs(x - y)
+        if d > 18 and not (max(x, y) <= 48 and d <= 32):
+            return False
+    return True
+
+
+def _alt_treatments(ctx, mark: str, t: Treatment) -> list[Treatment]:
+    """Designer replacements for a would-be DUPLICATE slide, in preference order
+    (the Inclement rule — a 1-color yellow brand rendered slots 02 and 04 as the
+    same full-yellow-on-black):
+
+    1. the **two-tone dark slide** — the icon keeps its brand color, the wordmark
+       goes WHITE (yellow mark + white text on black). Logo marks with a real
+       icon/wordmark split only.
+    2. the mark verbatim on a **deep in-scheme shade** of the brand color (a
+       distinct dark field that isn't plain black)."""
+    alts: list[Treatment] = []
+    sel = ctx.selection
+    if mark == "logo" and sel.icon and set(sel.logo) - set(sel.icon):
+        alts.append(Treatment(t.index, t.background, "split"))
+    brand = ctx.report.brand_a
+    if brand and colors.saturation(brand) >= 0.10:
+        alts.append(Treatment(t.index, colors.shade_of(brand), "keep"))
+    return alts
+
+
 def _render_set(ctx, mark: str, stem: str, is_gradient: bool, builder: PackageBuilder) -> None:
-    """Write the full with-background + transparent file set for one mark."""
+    """Write the full with-background + transparent file set for one mark.
+
+    No two with-background slides in a set may be visually identical (owner
+    rule, learned from Inclement): when a recipe slot renders the same slide as
+    an earlier slot (e.g. a 1-color brand's 02 dark and 04 brand-B fields both
+    resolve to the same mark on black), the later slot is replaced by the
+    designer alternate — the two-tone (brand icon + white text), else a deep
+    in-scheme shade field. Slot numbering never changes."""
+    seen: list = []
     for t in with_bg_recipes(mark, ctx.report, is_gradient):  # JPEG/PDF/SVG @ artboard size
         svg = treatments.render_variant(ctx, mark, t, with_background=True)
+        img = _slide_image(svg)
+        if any(_looks_same(img, s) for s in seen):
+            for alt in _alt_treatments(ctx, mark, t):
+                alt_svg = treatments.render_variant(ctx, mark, alt, with_background=True)
+                alt_img = _slide_image(alt_svg)
+                if not any(_looks_same(alt_img, s) for s in seen):
+                    svg, img = alt_svg, alt_img
+                    break
+        seen.append(img)
         write_svg(svg, builder.svg / variant_filename(stem, t.index, "svg"))
         write_jpg(svg, builder.jpg / variant_filename(stem, t.index, "jpg"))
         write_pdf(svg, builder.pdf / variant_filename(stem, t.index, "pdf"))

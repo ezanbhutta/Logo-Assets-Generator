@@ -98,6 +98,42 @@ def test_box_generates_both_sets(solid_svg, tmp_path):
     assert any("/Icon 01.jpg" in m for m in res.manifest)
 
 
+def test_no_duplicate_slides_two_tone_dark(tmp_path):
+    """The Inclement rule: a 1-chromatic-color brand (yellow icon + black
+    wordmark) used to render slots 02 (dark keep) and 04 (brand-B black field)
+    as the SAME full-yellow-on-black slide. No two with-bg slides may be
+    identical — slot 04 becomes the two-tone: the icon keeps its yellow, the
+    wordmark goes WHITE."""
+    from app.pipeline import _slide_image, _looks_same
+    yellow = "#f7c400"
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240">'
+           + ''.join(f'<rect x="{160 + i * 30}" y="20" width="16" height="70" fill="{yellow}"/>'
+                     for i in range(3))                                  # icon: 3 yellow bars
+           + ''.join(f'<rect x="{80 + i * 44}" y="150" width="30" height="40" fill="#0a0a0a"/>'
+                     for i in range(6))                                  # wordmark: black glyphs
+           + '</svg>')
+    src = tmp_path / "in.svg"
+    src.write_bytes(svg.encode())
+    summ = run_ingest(src, tmp_path)
+    res = run_generate(GenerateRequest(brand="Acme", working_svg=_primary(summ).working_svg,
+                                       selection_box=(150, 10, 110, 90)), tmp_path)
+    root = res.zip_path.parent / "Acme Files"
+
+    logo4 = (root / "SVG" / "Logo 04.svg").read_text()
+    # 04 is the two-tone: yellow icon kept + white wordmark on the dark field
+    assert yellow in logo4 and "#ffffff" in logo4
+
+    # every with-bg slide in each set is visually unique (Logo 02 vs 04 was the
+    # duplicate pair; the Icon set resolves its own via the deep-shade field)
+    for stem in ("Logo", "Icon"):
+        imgs = [_slide_image((root / "SVG" / f"{stem} {i:02d}.svg").read_text())
+                for i in range(1, 7)]
+        for i in range(6):
+            for j in range(i + 1, 6):
+                assert not _looks_same(imgs[i], imgs[j]), \
+                    f"{stem} {i+1:02d} and {stem} {j+1:02d} read as the same slide"
+
+
 def test_extra_lockups_ship_named_sets(solid_svg, tmp_path):
     """Additional tagged artboards ship as their own NAMED lockup sets — a full
     logo-shaped set each (`Horizontal Logo 01.jpg` …), alongside Logo/Icon. The
