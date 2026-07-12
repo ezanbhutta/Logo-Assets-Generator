@@ -59,6 +59,16 @@ logo delivery package as a `.zip`. Upload → zip out. No DB, no auth.
   57 generated files + the 2 pass-through originals.
 - **Icon set is OPTIONAL.** No icon box marked (and no named layers) → generate
   the **logo set only** (27 files). Never force/auto-ship an icon the CSR didn't ask for.
+- **EXTRA LOCKUPS (owner feature).** Beyond Logo + Icon, the CSR may tag **any
+  number of further artboards** as named lockups — presets *Secondary / Horizontal
+  / Vertical / Oneline / Stacked Logo, Wordmark, Submark, Monogram, Badge* or a
+  **custom name**. Each ships as its own full logo-shaped set (1920×1080, 60%,
+  30 files) named after it: `Horizontal Logo 01.jpg` …, in the same folder tree.
+  All lockups use the PRIMARY logo's confirmed palette (one family of backgrounds
+  across the package); gradient-ness is per-artboard. Stems are sanitized
+  (`safe_brand`) and de-duped against `Logo`/`Icon`/each other (`Logo` → `Logo 2`)
+  so no set can overwrite another. API: `extra_marks: [{artboard, name, box?}]`
+  (`pipeline.ExtraLockup`); UI: a "+ also ship as…" select on each artboard card.
 - **Ignore extras** found in reference zips — social cover photos
   (Facebook/LinkedIn/Twitter-X/YouTube), brand guidelines, business cards,
   Instagram templates, **iconography sets**, per-variant EPS, AI/EPS-in-folders,

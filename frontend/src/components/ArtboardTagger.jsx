@@ -1,14 +1,29 @@
 // Shown after ingest: every artboard of every uploaded file, grouped by file.
 // The CSR tags ONE as the Logo lockup and (optionally) ONE as the Icon source —
-// they may be on different artboards or even different files. The package is
-// then generated from exactly those two tagged artboards.
+// they may be on different artboards or even different files. Any OTHER artboard
+// can also be tagged as a named lockup (Secondary / Horizontal / Vertical /
+// Oneline Logo, or a custom name); each ships as its own full set in the package.
+const LOCKUP_PRESETS = [
+  "Secondary Logo",
+  "Horizontal Logo",
+  "Vertical Logo",
+  "Oneline Logo",
+  "Stacked Logo",
+  "Wordmark",
+  "Submark",
+  "Monogram",
+  "Badge",
+];
+
 export default function ArtboardTagger({
   artboards,
   files,
   primaryIndex,
   logoArtboard,
   iconArtboard,
+  extraTags,
   onTag,
+  onTagExtra,
   onContinue,
 }) {
   // group artboards by their source file (preserve file + page order)
@@ -22,6 +37,9 @@ export default function ArtboardTagger({
     g.boards.push(b);
   }
   const multiFile = groups.length > 1;
+  const extraCount = Object.entries(extraTags || {}).filter(
+    ([i, n]) => n && n.trim() && Number(i) !== logoArtboard && Number(i) !== iconArtboard
+  ).length;
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -30,15 +48,16 @@ export default function ArtboardTagger({
           2
         </span>
         <h2 className="text-base font-semibold text-slate-700">
-          Tag the Logo and the Icon
+          Tag the Logo, the Icon — and any other lockups
         </h2>
       </div>
       <p className="mb-5 text-sm text-slate-500">
         {artboards.length} artboard{artboards.length === 1 ? "" : "s"}
         {multiFile ? ` across ${groups.length} files` : ""}. Mark which one is the{" "}
         <Tag tone="logo">Logo</Tag> lockup and (optionally) which is the{" "}
-        <Tag tone="icon">Icon</Tag>. The icon can be a separate artboard, the same
-        one, or left untagged for a logo-only package.
+        <Tag tone="icon">Icon</Tag>. Any other artboard can also ship as its own
+        named lockup — Secondary, Horizontal, Vertical, Oneline… — pick a name on
+        its card and it gets a full set of files.
       </p>
 
       <div className="space-y-6">
@@ -57,7 +76,9 @@ export default function ArtboardTagger({
                   suggested={b.index === primaryIndex}
                   isLogo={b.index === logoArtboard}
                   isIcon={b.index === iconArtboard}
+                  extraName={extraTags?.[b.index] ?? null}
                   onTag={onTag}
+                  onTagExtra={onTagExtra}
                 />
               ))}
             </div>
@@ -69,11 +90,18 @@ export default function ArtboardTagger({
         <p className="text-xs text-slate-500">
           {logoArtboard == null
             ? "Tag a Logo artboard to continue."
-            : iconArtboard == null
-            ? "No Icon tagged — the package will be logo-only (you can still mark an icon inside the logo next)."
-            : iconArtboard === logoArtboard
-            ? "Icon shares the logo artboard — mark its region next."
-            : "Logo and Icon tagged on separate artboards."}
+            : [
+                iconArtboard == null
+                  ? "No Icon tagged — the package will have no icon set"
+                  : iconArtboard === logoArtboard
+                  ? "Icon shares the logo artboard — mark its region next"
+                  : "Logo and Icon tagged on separate artboards",
+                extraCount
+                  ? `+ ${extraCount} extra lockup${extraCount === 1 ? "" : "s"}`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(" · ") + "."}
         </p>
         <button
           disabled={logoArtboard == null}
@@ -87,16 +115,28 @@ export default function ArtboardTagger({
   );
 }
 
-function BoardCard({ board: b, suggested, isLogo, isIcon, onTag }) {
+function BoardCard({ board: b, suggested, isLogo, isIcon, extraName, onTag, onTagExtra }) {
   const [minX, minY, maxX, maxY] = b.viewbox;
   const w = Math.max(maxX - minX, 1);
   const h = Math.max(maxY - minY, 1);
   const manual = b.classification === "manual";
+  const hasExtra = !isLogo && !isIcon && extraName != null;
+  const isCustom = hasExtra && !LOCKUP_PRESETS.includes(extraName);
   const ring = isLogo
     ? "border-pulse-500 ring-2 ring-pulse-200"
     : isIcon
     ? "border-emerald-500 ring-2 ring-emerald-200"
+    : hasExtra && extraName.trim()
+    ? "border-amber-400 ring-2 ring-amber-100"
     : "border-slate-200";
+
+  function onSelect(e) {
+    const v = e.target.value;
+    if (v === "") onTagExtra(b.index, null);
+    else if (v === "__custom__") onTagExtra(b.index, "");   // empty = pending custom name
+    else onTagExtra(b.index, v);
+  }
+
   return (
     <div className={`rounded-lg border-2 p-2 transition ${ring}`}>
       <div
@@ -127,6 +167,36 @@ function BoardCard({ board: b, suggested, isLogo, isIcon, onTag }) {
           Icon
         </RoleButton>
       </div>
+      {!isLogo && !isIcon && (
+        <div className="mt-1.5 space-y-1">
+          <select
+            value={hasExtra ? (isCustom ? "__custom__" : extraName) : ""}
+            onChange={onSelect}
+            className={`w-full rounded-md border px-1.5 py-1.5 text-xs ${
+              hasExtra && extraName.trim()
+                ? "border-amber-300 bg-amber-50 text-amber-800"
+                : "border-slate-200 bg-slate-50 text-slate-500"
+            }`}
+          >
+            <option value="">+ also ship as…</option>
+            {LOCKUP_PRESETS.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+            <option value="__custom__">Custom name…</option>
+          </select>
+          {isCustom && (
+            <input
+              autoFocus
+              value={extraName}
+              placeholder="Lockup name, e.g. App Icon Dark"
+              onChange={(e) => onTagExtra(b.index, e.target.value)}
+              className="w-full rounded-md border border-amber-300 px-1.5 py-1 text-xs"
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }

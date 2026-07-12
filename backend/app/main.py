@@ -21,7 +21,7 @@ from .config import safe_brand
 from .ingest import IngestError
 from .models import (ArtboardInfo, GenerateRequestBody, HealthResponse,
                      IngestResponse, SegmentRequestBody, SegmentResponse)
-from .pipeline import (GenerateRequest, ManualFlag, run_generate,
+from .pipeline import (ExtraLockup, GenerateRequest, ManualFlag, run_generate,
                        run_ingest_multi)
 from .svg_model import WorkingSVG
 
@@ -218,6 +218,21 @@ def generate_endpoint(body: GenerateRequestBody):
     # Back-compat: `selection_box` marks the icon within the logo artboard.
     sel_box = tuple(body.selection_box) if body.selection_box else None
 
+    # Additional named lockups (Secondary / Horizontal / Vertical / Oneline …):
+    # each is a further tagged artboard shipped as its own named set. The Logo
+    # and Icon artboards are already covered by their own sets, so they're
+    # skipped here even if double-tagged.
+    extras: list[ExtraLockup] = []
+    for em in body.extra_marks:
+        if em.artboard in (logo_ab, icon_ab) or not em.name.strip():
+            continue
+        board = job / f"working_{em.artboard}.svg"
+        if not board.is_file():
+            raise HTTPException(status_code=400,
+                                detail=f"invalid lockup artboard ({em.name})")
+        extras.append(ExtraLockup(name=em.name, svg=board.read_text(encoding="utf-8"),
+                                  box=tuple(em.box) if em.box else None))
+
     common = dict(
         brand=body.brand.strip() or "Logo",
         working_svg=working_svg,
@@ -228,6 +243,7 @@ def generate_endpoint(body: GenerateRequestBody):
         ai_path=ai_path if (ai_path and ai_path.exists()) else None,
         eps_path=eps_path if (eps_path and eps_path.exists()) else None,
         artboard_index=page - 1,
+        extras=extras,
     )
     if icon_svg is not None:
         # Separate icon artboard: icon_box marks the icon within icon_svg.

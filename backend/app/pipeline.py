@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import colors, ingest, selection, treatments, vision
-from .config import (ICON_STEM, LOGO_STEM, variant_filename)
+from .config import (ICON_STEM, LOGO_STEM, safe_brand, variant_filename)
 from .exporters import (write_svg, write_jpg, write_pdf, write_png_transparent)
 from .ingest import IngestError
 from .packager import PackageBuilder
@@ -171,6 +171,18 @@ def _suggest_primary(boards: list[ArtboardSummary]) -> int:
 
 # --- generate ----------------------------------------------------------------
 @dataclass
+class ExtraLockup:
+    """An additional tagged artboard shipped as its own named lockup set —
+    "Secondary Logo", "Horizontal Logo", "Oneline Logo", "Vertical Logo", or any
+    custom name. Rendered logo-shaped (1920×1080 artboards, 60% binding side)
+    with the PRIMARY logo's confirmed palette, so every lockup in the package
+    shares the same backgrounds."""
+    name: str
+    svg: str                              # that artboard's working SVG
+    box: tuple[float, float, float, float] | None = None  # crop region (None -> whole artboard)
+
+
+@dataclass
 class GenerateRequest:
     brand: str
     working_svg: str                      # the LOGO artboard's working SVG
@@ -185,6 +197,7 @@ class GenerateRequest:
     ai_path: Path | None = None
     eps_path: Path | None = None
     artboard_index: int = 0               # the LOGO artboard's page -> masters (§4)
+    extras: list[ExtraLockup] = field(default_factory=list)  # additional named lockups
 
 
 @dataclass
@@ -223,6 +236,20 @@ def _icon_artboard_selection(model: WorkingSVG, icon_box) -> Selection:
     panels = selection._panel_ids(ink, model.viewbox)
     ids = [n.lpid for n in ink if n.lpid not in panels] or [n.lpid for n in ink]
     return Selection(icon=ids, logo=ids, source="artboard")
+
+
+def _lockup_stem(name: str, used: set[str]) -> str:
+    """A safe, unique file stem for an extra lockup's files. The CSR-supplied
+    name is sanitized like the brand (it becomes filenames) and de-duped against
+    the stems already in the package (`Logo`, `Icon`, other lockups) so two
+    lockups can never overwrite each other's files."""
+    base = safe_brand(name).strip() or "Lockup"
+    stem, n = base, 2
+    while stem.lower() in used:
+        stem = f"{base} {n}"
+        n += 1
+    used.add(stem.lower())
+    return stem
 
 
 def run_generate(req: GenerateRequest, workdir: Path) -> GenerateResult:
@@ -265,6 +292,21 @@ def run_generate(req: GenerateRequest, workdir: Path) -> GenerateResult:
     if icon_ctx is not None:
         _render_set(icon_ctx, "icon", ICON_STEM, icon_gradient, builder)
     _render_set(logo_ctx, "logo", LOGO_STEM, report.is_gradient, builder)
+
+    # Additional named lockups (Secondary / Horizontal / Vertical / Oneline …):
+    # each tagged artboard ships as its own full logo-shaped set, named after its
+    # lockup. All sets use the PRIMARY logo's confirmed palette so the whole
+    # package shares one family of backgrounds; gradient-ness is per-artboard
+    # (a gradient secondary gets the gradient recipes, like the icon does).
+    used_stems = {ICON_STEM.lower(), LOGO_STEM.lower()}
+    for ex in req.extras:
+        model = WorkingSVG.from_string(ex.svg)
+        sel, _ = selection.select(model, logo_box=ex.box, icon_box=None)  # may raise BoxMiss
+        if not sel.logo:
+            continue                        # empty artboard — nothing to ship
+        stem = _lockup_stem(ex.name, used_stems)
+        ctx = treatments.build_context(model, sel, report)
+        _render_set(ctx, "logo", stem, colors.detect(model).is_gradient, builder)
 
     builder.passthrough(req.ai_path, req.eps_path, req.artboard_index)
     zip_path = workdir / f"{req.brand} Files.zip"
