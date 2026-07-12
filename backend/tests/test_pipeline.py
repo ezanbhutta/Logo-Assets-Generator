@@ -134,6 +134,45 @@ def test_no_duplicate_slides_two_tone_dark(tmp_path):
                     f"{stem} {i+1:02d} and {stem} {j+1:02d} read as the same slide"
 
 
+def test_two_tone_derived_when_icon_not_marked_in_logo(tmp_path):
+    """The olive-slide regression: with the icon tagged on a SEPARATE artboard,
+    the logo selection has no icon/wordmark split, and the duplicate dark slide
+    fell through to the deep-shade field (olive) with black text — wrong. The
+    two-tone must be DERIVED: the duplicate slot ships BLACK field · YELLOW
+    icon · WHITE text even when no icon is marked within the logo artboard."""
+    from app.pipeline import _slide_image, _looks_same
+    from conftest import render, near
+    yellow = "#f7c400"
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240">'
+           + ''.join(f'<rect x="{160 + i * 30}" y="20" width="16" height="70" fill="{yellow}"/>'
+                     for i in range(3))
+           + ''.join(f'<rect x="{80 + i * 44}" y="150" width="30" height="40" fill="#0a0a0a"/>'
+                     for i in range(6))
+           + '</svg>')
+    src = tmp_path / "in.svg"
+    src.write_bytes(svg.encode())
+    summ = run_ingest(src, tmp_path)
+    # No selection_box: mirrors the separate-icon-artboard flow (logo sel has no icon).
+    res = run_generate(GenerateRequest(brand="Acme", working_svg=_primary(summ).working_svg,
+                                       selection_box=None), tmp_path)
+    root = res.zip_path.parent / "Acme Files"
+    logo2 = (root / "SVG" / "Logo 02.svg").read_text()
+    logo4 = (root / "SVG" / "Logo 04.svg").read_text()
+    assert not _looks_same(_slide_image(logo2), _slide_image(logo4))
+    # the replacement is the two-tone, NOT the shade field: black bg, white text
+    img = render(logo4).convert("RGB")
+    W, H = img.size
+    assert near(img.getpixel((20, 20)), (0, 0, 0), tol=20), "field must stay black, not a shade"
+    whites = yellows = 0
+    for x in range(0, W, 6):
+        for y in range(0, H, 6):
+            p = img.getpixel((x, y))
+            whites += near(p, (255, 255, 255))
+            yellows += near(p, (247, 196, 0), tol=40)
+    assert yellows > 0, "icon must keep its yellow"
+    assert whites > 0, "wordmark must go white (two-tone), not stay dark on a shade"
+
+
 def test_wordmark_box_ships_typography_set(solid_svg, tmp_path):
     """A Text box ships the WORDMARK (typography-only) set: logo-shaped with-bg
     slides (6×3) plus a 3-slot transparent set (no split — a wordmark has no

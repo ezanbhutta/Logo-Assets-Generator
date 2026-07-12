@@ -129,11 +129,13 @@ a static table, because slots 02–04 depend on the brand colors. The five slots
   strict ~7% tolerance, looser in deep shadow where `#000013` vs `#000000` is
   invisible) and replaces a would-be duplicate with the designer alternate, in
   order: (1) the **two-tone dark slide** — icon keeps its brand color, wordmark
-  goes WHITE (yellow mark + white text on black; logo marks with a real
-  icon/wordmark split) · (2) the mark verbatim on a **deep in-scheme shade** of
-  the brand color (the icon set's fallback). Slot numbering/file counts never
-  change; if every alternate also collides, the original ships (never fail the
-  package over the dedupe).
+  goes WHITE (BLACK field · yellow icon · white text). The icon/text split is
+  the marked one, or **derived** (largest-gap cut, most-square side) when the
+  icon was tagged on a separate artboard — the olive-shade slide that shipped in
+  that flow was wrong · (2) the mark verbatim on a **deep in-scheme shade** of
+  the brand color — LAST RESORT only (an icon-only set has no text to whiten).
+  Slot numbering/file counts never change; if every alternate also collides,
+  the original ships (never fail the package over the dedupe).
 
 - **AUTHORED-BACKGROUND set (owner rule, learned from GANG PUR).** When the source
   is a mark drawn on a **chromatic full-bleed field** (a brand's cream/pastel — a

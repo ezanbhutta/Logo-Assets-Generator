@@ -249,23 +249,50 @@ def _looks_same(a, b) -> bool:
     return True
 
 
-def _alt_treatments(ctx, mark: str, t: Treatment) -> list[Treatment]:
-    """Designer replacements for a would-be DUPLICATE slide, in preference order
-    (the Inclement rule — a 1-color yellow brand rendered slots 02 and 04 as the
-    same full-yellow-on-black):
+def _two_tone_ctx(ctx, mark: str):
+    """A context able to render the TWO-TONE dark slide — icon keeps its brand
+    color, wordmark goes WHITE (black field · yellow icon · white text, the
+    owner's Inclement standard).
 
-    1. the **two-tone dark slide** — the icon keeps its brand color, the wordmark
-       goes WHITE (yellow mark + white text on black). Logo marks with a real
-       icon/wordmark split only.
-    2. the mark verbatim on a **deep in-scheme shade** of the brand color (a
-       distinct dark field that isn't plain black)."""
-    alts: list[Treatment] = []
+    Uses the marked icon when the selection has one. When it doesn't (the icon
+    was tagged on a SEPARATE artboard, so the logo selection carries no split —
+    the flow that shipped an olive shade field instead), the split is DERIVED
+    the way ``auto_icon`` does it: cut at the largest gap, most-square side is
+    the icon. Returns None only when the logo genuinely has no usable split."""
+    if mark != "logo":
+        return None
     sel = ctx.selection
-    if mark == "logo" and sel.icon and set(sel.logo) - set(sel.icon):
-        alts.append(Treatment(t.index, t.background, "split"))
+    if sel.icon and set(sel.logo) - set(sel.icon):
+        return ctx
+    nodes = [ctx.model.by_lpid[i] for i in sel.logo
+             if i in ctx.model.by_lpid and ctx.model.by_lpid[i].bbox]
+    if len(nodes) < 2:
+        return None
+    icon_grp, word_grp, _sep = selection._largest_gap_split(ctx.model, nodes)
+    if not icon_grp or not word_grp:
+        return None
+    two = Selection(icon=[n.lpid for n in icon_grp], logo=list(sel.logo), source="auto")
+    return treatments.build_context(ctx.model, two, ctx.report)
+
+
+def _alternates(ctx, mark: str, t: Treatment) -> list[tuple[Treatment, object]]:
+    """(treatment, context) replacements for a would-be DUPLICATE slide, in
+    preference order (the Inclement rule — a 1-color yellow brand rendered slots
+    02 and 04 as the same full-yellow-on-black):
+
+    1. the **two-tone dark slide** — the icon keeps its brand color, the
+       wordmark goes WHITE (yellow mark + white text on black). The icon/text
+       split is the marked one, or derived when the icon lives on another
+       artboard.
+    2. the mark verbatim on a **deep in-scheme shade** of the brand color —
+       last resort only (an icon-only set has no text to whiten)."""
+    alts: list[tuple[Treatment, object]] = []
+    tt = _two_tone_ctx(ctx, mark)
+    if tt is not None:
+        alts.append((Treatment(t.index, t.background, "split"), tt))
     brand = ctx.report.brand_a
     if brand and colors.saturation(brand) >= 0.10:
-        alts.append(Treatment(t.index, colors.shade_of(brand), "keep"))
+        alts.append((Treatment(t.index, colors.shade_of(brand), "keep"), ctx))
     return alts
 
 
@@ -283,8 +310,8 @@ def _render_set(ctx, mark: str, stem: str, is_gradient: bool, builder: PackageBu
         svg = treatments.render_variant(ctx, mark, t, with_background=True)
         img = _slide_image(svg)
         if any(_looks_same(img, s) for s in seen):
-            for alt in _alt_treatments(ctx, mark, t):
-                alt_svg = treatments.render_variant(ctx, mark, alt, with_background=True)
+            for alt_t, alt_ctx in _alternates(ctx, mark, t):
+                alt_svg = treatments.render_variant(alt_ctx, mark, alt_t, with_background=True)
                 alt_img = _slide_image(alt_svg)
                 if not any(_looks_same(alt_img, s) for s in seen):
                     svg, img = alt_svg, alt_img
