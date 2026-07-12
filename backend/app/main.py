@@ -237,6 +237,7 @@ def generate_endpoint(body: GenerateRequestBody):
         brand=body.brand.strip() or "Logo",
         working_svg=working_svg,
         logo_box=logo_box,
+        wordmark_box=tuple(body.wordmark_box) if body.wordmark_box else None,
         removed_colors=body.removed_colors,
         brand_a=body.brand_a,
         brand_b=body.brand_b,

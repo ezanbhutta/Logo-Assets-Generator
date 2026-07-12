@@ -59,6 +59,9 @@ class GenerateRequestBody(BaseModel):
     # artwork); icon_box marks the icon within the icon artboard (null -> whole).
     logo_box: list[float] | None = Field(default=None, min_length=4, max_length=4)
     icon_box: list[float] | None = Field(default=None, min_length=4, max_length=4)
+    # Text-only region within the LOGO artboard: ships a "Wordmark" set
+    # (typography only), the way icon_box ships the Icon set.
+    wordmark_box: list[float] | None = Field(default=None, min_length=4, max_length=4)
     # Back-compat aliases (single-artboard flow): `artboard` == logo_artboard,
     # `selection_box` == icon_box within the logo artboard.
     artboard: int | None = None

@@ -12,7 +12,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import colors, ingest, selection, treatments, vision
-from .config import (ICON_STEM, LOGO_STEM, safe_brand, variant_filename)
+from .config import (ICON_STEM, LOGO_STEM, WORDMARK_STEM, safe_brand,
+                     variant_filename)
 from .exporters import (write_svg, write_jpg, write_pdf, write_png_transparent)
 from .ingest import IngestError
 from .packager import PackageBuilder
@@ -188,6 +189,9 @@ class GenerateRequest:
     working_svg: str                      # the LOGO artboard's working SVG
     selection_box: tuple[float, float, float, float] | None = None  # icon within the logo artboard
     logo_box: tuple[float, float, float, float] | None = None
+    # Text-only region within the logo artboard -> ships the "Wordmark" set
+    # (typography only), the way the icon box ships the Icon set.
+    wordmark_box: tuple[float, float, float, float] | None = None
     icon_svg: str | None = None           # a SEPARATE icon artboard (None -> icon within the logo)
     icon_box: tuple[float, float, float, float] | None = None       # icon within `icon_svg`
     use_named_layers: bool = False
@@ -209,6 +213,7 @@ class GenerateResult:
     brand_a: str
     brand_b: str
     include_icon: bool = True
+    include_wordmark: bool = False
 
 
 def _slide_image(svg: str):
@@ -359,9 +364,25 @@ def run_generate(req: GenerateRequest, workdir: Path) -> GenerateResult:
 
     logo_ctx = treatments.build_context(logo_model, logo_sel, report)
 
+    # The WORDMARK (typography-only) set: an explicitly-marked text region within
+    # the logo artboard, shipped as its own set the way the icon is. Rendered
+    # logo-shaped (1920×1080, 60%) with a 3-slot transparent set (full/white/
+    # black — a wordmark has no icon, so the split slot would be a duplicate).
+    wordmark_ctx = None
+    if req.wordmark_box is not None:
+        try:
+            wsel, _ = selection.select(logo_model, logo_box=req.wordmark_box, icon_box=None)
+        except selection.BoxMiss as e:
+            raise selection.BoxMiss("wordmark", received=e.received, artwork=e.artwork)
+        if wsel.logo:
+            wordmark_ctx = treatments.build_context(
+                logo_model, Selection(icon=[], logo=wsel.logo, source="box"), report)
+
     if icon_ctx is not None:
         _render_set(icon_ctx, "icon", ICON_STEM, icon_gradient, builder)
     _render_set(logo_ctx, "logo", LOGO_STEM, report.is_gradient, builder)
+    if wordmark_ctx is not None:
+        _render_set(wordmark_ctx, "wordmark", WORDMARK_STEM, report.is_gradient, builder)
 
     # Additional named lockups (Secondary / Horizontal / Vertical / Oneline …):
     # each tagged artboard ships as its own full logo-shaped set, named after its
@@ -369,6 +390,8 @@ def run_generate(req: GenerateRequest, workdir: Path) -> GenerateResult:
     # package shares one family of backgrounds; gradient-ness is per-artboard
     # (a gradient secondary gets the gradient recipes, like the icon does).
     used_stems = {ICON_STEM.lower(), LOGO_STEM.lower()}
+    if wordmark_ctx is not None:
+        used_stems.add(WORDMARK_STEM.lower())
     for ex in req.extras:
         model = WorkingSVG.from_string(ex.svg)
         sel, _ = selection.select(model, logo_box=ex.box, icon_box=None)  # may raise BoxMiss
@@ -390,4 +413,5 @@ def run_generate(req: GenerateRequest, workdir: Path) -> GenerateResult:
         brand_a=report.brand_a,
         brand_b=report.brand_b,
         include_icon=icon_ctx is not None,
+        include_wordmark=wordmark_ctx is not None,
     )

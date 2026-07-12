@@ -19,6 +19,7 @@ export default function App() {
   const [brand, setBrand] = useState("");
   const [logoBox, setLogoBox] = useState(null);   // logo region within the logo artboard
   const [iconBox, setIconBox] = useState(null);    // icon region within the icon source
+  const [textBox, setTextBox] = useState(null);    // text-only region -> ships the Wordmark set
   const [removed, setRemoved] = useState([]);
   const [mark, setMark] = useState("icon"); // 'logo' | 'icon' | 'named' — logo-preview tool
   const [suggestion, setSuggestion] = useState(null);
@@ -68,6 +69,7 @@ export default function App() {
     setDetectNote("");
     setLogoBox(null);
     setIconBox(null);
+    setTextBox(null);
   }
 
   // Prepare the marking step for a chosen logo artboard: load its auto-detected
@@ -163,6 +165,7 @@ export default function App() {
         // icon_box is relative to whichever artboard holds the icon (the backend
         // routes it). When the icon is a named layer in the logo, send no box.
         icon_box: iconInLogo && mark === "named" ? null : iconBox,
+        wordmark_box: textBox,
         removed_colors: removed,
         brand_a: logoBoard.brand_a,
         brand_b: logoBoard.brand_b,
@@ -256,8 +259,10 @@ export default function App() {
                 hasIconTool={iconInLogo}
                 logoBox={logoBox}
                 iconBox={iconBox}
+                textBox={textBox}
                 clearLogo={() => setLogoBox(null)}
                 clearIcon={() => setIconBox(null)}
+                clearText={() => setTextBox(null)}
               />
               {!usedSuggestion && !logoBox && !iconBox && (
                 <button
@@ -296,6 +301,8 @@ export default function App() {
                   ? "Drag a box around the actual logo — use this for a brand-sheet / bento; everything outside is ignored."
                   : mark === "icon"
                   ? "Drag a box around the icon (optional). It must sit inside the logo region."
+                  : mark === "text"
+                  ? "Drag a box around the text only (optional) — ships a typography-only Wordmark set."
                   : "Using the file's detected Icon layer."}
               </p>
               <SvgPreview
@@ -303,8 +310,17 @@ export default function App() {
                 viewbox={logoBoard.viewbox}
                 logoBox={logoBox}
                 iconBox={iconInLogo ? iconBox : null}
+                textBox={textBox}
                 active={mark === "named" ? null : mark === "icon" && !iconInLogo ? "logo" : mark}
-                onBox={(b) => (mark === "logo" ? setLogoBox(b) : iconInLogo ? setIconBox(b) : null)}
+                onBox={(b) =>
+                  mark === "logo"
+                    ? setLogoBox(b)
+                    : mark === "text"
+                    ? setTextBox(b)
+                    : iconInLogo
+                    ? setIconBox(b)
+                    : null
+                }
               />
               {logoBoard.named_selection?.overlap_warning && (
                 <Banner tone="warn">
@@ -365,6 +381,7 @@ export default function App() {
                 <div className="mb-3 text-xs text-slate-500">
                   converter: {result.converter} · {logoBoard.is_gradient ? "gradient" : "solid"} recipes
                   {iconBoard ? ` · icon from ${iconBoard.label}` : ""}
+                  {textBox ? " · wordmark set" : ""}
                   {extraMarks.length
                     ? ` · +${extraMarks.length} lockup${extraMarks.length === 1 ? "" : "s"}: ${extraMarks
                         .map((m) => m.name)
@@ -425,7 +442,7 @@ function hasIcon(iconInLogo, iconBox, iconBoard, mark) {
   return mark === "named" || !!iconBox;     // icon marked within the logo
 }
 
-function MarkTools({ mark, setMark, hasNamed, hasIconTool, logoBox, iconBox, clearLogo, clearIcon }) {
+function MarkTools({ mark, setMark, hasNamed, hasIconTool, logoBox, iconBox, textBox, clearLogo, clearIcon, clearText }) {
   const Tool = ({ id, label, dot }) => (
     <button
       onClick={() => setMark(id)}
@@ -442,6 +459,7 @@ function MarkTools({ mark, setMark, hasNamed, hasIconTool, logoBox, iconBox, cle
       <div className="inline-flex rounded-md border border-slate-300 p-0.5">
         <Tool id="logo" label="Logo region" dot="bg-pulse-500" />
         {hasIconTool && <Tool id="icon" label="Icon" dot="bg-emerald-500" />}
+        <Tool id="text" label="Text" dot="bg-amber-500" />
         {hasNamed && <Tool id="named" label="Detected layer" />}
       </div>
       {logoBox && (
@@ -452,6 +470,11 @@ function MarkTools({ mark, setMark, hasNamed, hasIconTool, logoBox, iconBox, cle
       {iconBox && hasIconTool && (
         <button onClick={clearIcon} className="text-xs text-slate-400 underline hover:text-slate-600">
           clear icon
+        </button>
+      )}
+      {textBox && (
+        <button onClick={clearText} className="text-xs text-slate-400 underline hover:text-slate-600">
+          clear text
         </button>
       )}
     </div>

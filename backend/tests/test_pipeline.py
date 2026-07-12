@@ -134,6 +134,71 @@ def test_no_duplicate_slides_two_tone_dark(tmp_path):
                     f"{stem} {i+1:02d} and {stem} {j+1:02d} read as the same slide"
 
 
+def test_wordmark_box_ships_typography_set(solid_svg, tmp_path):
+    """A Text box ships the WORDMARK (typography-only) set: logo-shaped with-bg
+    slides (6×3) plus a 3-slot transparent set (no split — a wordmark has no
+    icon inside it, the 4th slot would be a duplicate). 27 files, named
+    `Wordmark NN`."""
+    src = tmp_path / "in.svg"
+    src.write_bytes(solid_svg)
+    summ = run_ingest(src, tmp_path)
+    req = GenerateRequest(brand="Acme", working_svg=_primary(summ).working_svg,
+                          selection_box=(10, 5, 150, 150),      # icon: the flame
+                          wordmark_box=(175, 45, 260, 80))      # text: the navy glyphs
+    res = run_generate(req, tmp_path)
+    assert res.include_wordmark is True
+    assert "Acme Files/JPEG/Wordmark 01.jpg" in res.manifest
+    assert "Acme Files/SVG/Wordmark 06.svg" in res.manifest
+    assert "Acme Files/Transparent/PNG/Wordmark 03.png" in res.manifest
+    assert "Acme Files/Transparent/PNG/Wordmark 04.png" not in res.manifest  # 3-slot
+    assert len([m for m in res.manifest if "/Wordmark " in m]) == 27
+    # the wordmark set is typography only — no red flame pixel renders (the
+    # unused `.red` class may survive in the stylesheet; the flame path is gone)
+    from conftest import render, near
+    wm = (res.zip_path.parent / "Acme Files" / "SVG" / "Wordmark 01.svg").read_text()
+    img = render(wm).convert("RGB")
+    W, H = img.size
+    reds = sum(near(img.getpixel((x, y)), (236, 28, 36))
+               for x in range(0, W, 8) for y in range(0, H, 8))
+    assert reds == 0, "flame ink leaked into the typography-only set"
+    # Logo and Icon sets are untouched beside it
+    assert len([m for m in res.manifest if "/Logo " in m]) == 30
+    assert len([m for m in res.manifest if "/Icon " in m]) == 27
+
+
+def test_wordmark_box_miss_is_loud(solid_svg, tmp_path):
+    """A Text box over empty canvas refuses with box='wordmark' — never a silent
+    zip with the wordmark set missing."""
+    from app.selection import BoxMiss
+    src = tmp_path / "in.svg"
+    src.write_bytes(solid_svg)
+    summ = run_ingest(src, tmp_path)
+    req = GenerateRequest(brand="Acme", working_svg=_primary(summ).working_svg,
+                          selection_box=(10, 5, 150, 150),
+                          wordmark_box=(430, 5, 20, 20))        # empty corner
+    with pytest.raises(BoxMiss) as e:
+        run_generate(req, tmp_path)
+    assert e.value.box == "wordmark"
+
+
+def test_wordmark_stem_reserved_against_extra_lockups(solid_svg, tmp_path):
+    """An extra lockup ALSO named "Wordmark" de-dupes to `Wordmark 2` instead of
+    overwriting the Text-box set."""
+    from app.pipeline import ExtraLockup
+    src = tmp_path / "in.svg"
+    src.write_bytes(solid_svg)
+    summ = run_ingest(src, tmp_path)
+    other = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 100">'
+             '<rect x="10" y="30" width="380" height="40" fill="#112630"/></svg>')
+    req = GenerateRequest(brand="Acme", working_svg=_primary(summ).working_svg,
+                          selection_box=(10, 5, 150, 150),
+                          wordmark_box=(175, 45, 260, 80),
+                          extras=[ExtraLockup("Wordmark", other)])
+    res = run_generate(req, tmp_path)
+    assert "Acme Files/JPEG/Wordmark 01.jpg" in res.manifest      # the Text-box set
+    assert "Acme Files/JPEG/Wordmark 2 01.jpg" in res.manifest    # the lockup, de-duped
+
+
 def test_extra_lockups_ship_named_sets(solid_svg, tmp_path):
     """Additional tagged artboards ship as their own NAMED lockup sets — a full
     logo-shaped set each (`Horizontal Logo 01.jpg` …), alongside Logo/Icon. The
