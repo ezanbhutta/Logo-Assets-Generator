@@ -111,6 +111,20 @@ a static table, because slots 02–04 depend on the brand colors. The five slots
   monochrome (reversed).** The owner ships **both** monochromes as their own
   slides. (The transparent set also carries both one-color marks.)
 
+- **NO DUPLICATE SLIDES (owner rule, learned from Inclement).** No two
+  with-background slides in a set may read as the same slide. A 1-chromatic-color
+  brand (yellow icon + black wordmark) resolved slots 02 (dark keep) and 04
+  (brand-B black field) to the SAME full-yellow-on-black. The pipeline now
+  compares each slide's small render perceptually (`pipeline._looks_same` —
+  strict ~7% tolerance, looser in deep shadow where `#000013` vs `#000000` is
+  invisible) and replaces a would-be duplicate with the designer alternate, in
+  order: (1) the **two-tone dark slide** — icon keeps its brand color, wordmark
+  goes WHITE (yellow mark + white text on black; logo marks with a real
+  icon/wordmark split) · (2) the mark verbatim on a **deep in-scheme shade** of
+  the brand color (the icon set's fallback). Slot numbering/file counts never
+  change; if every alternate also collides, the original ships (never fail the
+  package over the dedupe).
+
 - **AUTHORED-BACKGROUND set (owner rule, learned from GANG PUR).** When the source
   is a mark drawn on a **chromatic full-bleed field** (a brand's cream/pastel — a
   soft cream counts, the tint bar is looser than a mark color's:
