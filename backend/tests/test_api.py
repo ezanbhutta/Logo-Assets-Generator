@@ -128,6 +128,39 @@ def test_multi_artboard_ingest_and_generate(tmp_path):
     assert g.headers["content-type"] == "application/zip"
 
 
+def test_generate_with_extra_marks(tmp_path):
+    """Multiple tagged artboards: the Logo plus an extra artboard tagged as a
+    named lockup — the zip carries the named set alongside the Logo set."""
+    import subprocess
+    from pypdf import PdfReader, PdfWriter
+    svgs = [
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300"><circle cx="150" cy="150" r="80" fill="#ec1c24"/></svg>',
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300"><rect x="40" y="120" width="220" height="60" fill="#112630"/></svg>',
+    ]
+    writer = PdfWriter()
+    for i, s in enumerate(svgs):
+        p = tmp_path / f"p{i}.pdf"
+        subprocess.run(["rsvg-convert", "-f", "pdf", "-o", str(p)], input=s.encode(), check=True)
+        for page in PdfReader(str(p)).pages:
+            writer.add_page(page)
+    ai = tmp_path / "multi.ai"
+    with open(ai, "wb") as f:
+        writer.write(f)
+
+    j = client.post("/ingest", files={"ai": ("Multi.ai", ai.read_bytes(),
+                                              "application/illustrator")}).json()
+    assert j["artboard_count"] == 2
+    g = client.post("/generate", json={
+        "job_id": j["job_id"], "brand": "Multi", "artboard": 0,
+        "selection_box": None,
+        "extra_marks": [{"artboard": 1, "name": "Horizontal Logo"}]})
+    assert g.status_code == 200
+    names = zipfile.ZipFile(io.BytesIO(g.content)).namelist()
+    assert any(n.endswith("/JPEG/Horizontal Logo 01.jpg") for n in names)
+    assert any(n.endswith("/Transparent/PNG/Horizontal Logo 01.png") for n in names)
+    assert any(n.endswith("/JPEG/Logo 01.jpg") for n in names)   # primary set intact
+
+
 def test_non_pdf_ai_rejected():
     r = _ingest(b"\x00not a pdf or svg", name="bad.ai", eps=False)
     assert r.status_code == 422

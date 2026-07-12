@@ -98,6 +98,38 @@ def test_box_generates_both_sets(solid_svg, tmp_path):
     assert any("/Icon 01.jpg" in m for m in res.manifest)
 
 
+def test_extra_lockups_ship_named_sets(solid_svg, tmp_path):
+    """Additional tagged artboards ship as their own NAMED lockup sets — a full
+    logo-shaped set each (`Horizontal Logo 01.jpg` …), alongside Logo/Icon. The
+    name is sanitized for filenames, and a name colliding with a reserved stem
+    (`Logo`) is de-duped rather than overwriting the primary set."""
+    from app.pipeline import ExtraLockup
+    src = tmp_path / "in.svg"
+    src.write_bytes(solid_svg)
+    summ = run_ingest(src, tmp_path)
+    horizontal = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 100">'
+                  '<rect x="10" y="30" width="380" height="40" fill="#112630"/></svg>')
+    vertical = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 400">'
+                '<rect x="30" y="10" width="40" height="380" fill="#ec1c24"/></svg>')
+    req = GenerateRequest(
+        brand="Acme", working_svg=_primary(summ).working_svg,
+        selection_box=(10, 5, 150, 150),
+        extras=[ExtraLockup("Horizontal Logo", horizontal),
+                ExtraLockup("One/line: Logo?", vertical),   # unsafe chars -> sanitized
+                ExtraLockup("Logo", horizontal)])           # reserved stem -> de-duped
+    res = run_generate(req, tmp_path)
+    # full 30-file logo-shaped set per lockup, across every folder
+    assert "Acme Files/JPEG/Horizontal Logo 01.jpg" in res.manifest
+    assert "Acme Files/SVG/Horizontal Logo 06.svg" in res.manifest
+    assert "Acme Files/Transparent/PNG/Horizontal Logo 04.png" in res.manifest
+    assert len([m for m in res.manifest if "/Horizontal Logo " in m]) == 30
+    # unsafe characters stripped to a clean filename stem
+    assert "Acme Files/JPEG/One line Logo 01.jpg" in res.manifest
+    # "Logo" collides with the primary stem -> "Logo 2", never overwritten
+    assert "Acme Files/JPEG/Logo 2 01.jpg" in res.manifest
+    assert len([m for m in res.manifest if "/Logo 0" in m]) == 30   # primary intact
+
+
 def test_manual_flag_refuses_no_partial_zip(oos_svg, tmp_path):
     src = tmp_path / "oos.svg"; src.write_bytes(oos_svg)
     summ = run_ingest(src, tmp_path)

@@ -35,6 +35,15 @@ class IngestResponse(BaseModel):
     artboards: list[ArtboardInfo]
 
 
+class ExtraMark(BaseModel):
+    """An ADDITIONAL tagged artboard shipped as its own named lockup — e.g.
+    "Secondary Logo", "Horizontal Logo", "Oneline Logo", "Vertical Logo". Each
+    generates a full logo-shaped set named after it (`Horizontal Logo 01.jpg`…)."""
+    artboard: int                    # GLOBAL artboard index
+    name: str                        # lockup name -> the files' stem
+    box: list[float] | None = Field(default=None, min_length=4, max_length=4)
+
+
 class GenerateRequestBody(BaseModel):
     job_id: str
     brand: str
@@ -42,6 +51,9 @@ class GenerateRequestBody(BaseModel):
     # on different artboards or even different uploaded files). GLOBAL indices.
     logo_artboard: int = 0
     icon_artboard: int | None = None  # None -> the icon comes from the logo artboard
+    # Additional lockups: any number of further tagged artboards, each shipped as
+    # its own named set (Secondary/Horizontal/Vertical/Oneline…, or custom).
+    extra_marks: list[ExtraMark] = []
     # Boxes are SVG USER-SPACE coordinates [x, y, w, h] (§7.2), each within its
     # own artboard. logo_box carves the logo out of a brand-sheet (null -> whole
     # artwork); icon_box marks the icon within the icon artboard (null -> whole).

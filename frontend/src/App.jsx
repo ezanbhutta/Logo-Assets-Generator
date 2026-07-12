@@ -12,6 +12,9 @@ export default function App() {
   // The CSR tags two roles across all artboards/files (global indices).
   const [logoArtboard, setLogoArtboard] = useState(null);
   const [iconArtboard, setIconArtboard] = useState(null);
+  // Additional named lockups: {artboardIndex: "Horizontal Logo", ...}. Each
+  // ships as its own full set alongside the Logo/Icon sets.
+  const [extraTags, setExtraTags] = useState({});
   const [tagged, setTagged] = useState(false); // has the CSR finished the tag step?
   const [brand, setBrand] = useState("");
   const [logoBox, setLogoBox] = useState(null);   // logo region within the logo artboard
@@ -47,6 +50,7 @@ export default function App() {
       // suggest the engine's primary as the logo; single artboard -> skip tagging
       setLogoArtboard(r.primary_index);
       setIconArtboard(null);
+      setExtraTags({});
       setTagged(r.artboard_count === 1);
       if (r.artboard_count === 1) primeBoard(r, r.primary_index);
     } catch (e) {
@@ -91,7 +95,31 @@ export default function App() {
     } else {
       setIconArtboard((cur) => (cur === index ? null : index));
     }
+    // A Logo/Icon tag supersedes any extra-lockup name on the same artboard.
+    setExtraTags((prev) => {
+      if (!(index in prev)) return prev;
+      const next = { ...prev };
+      delete next[index];
+      return next;
+    });
   }
+
+  function onTagExtra(index, name) {
+    setExtraTags((prev) => {
+      const next = { ...prev };
+      if (name == null) delete next[index];
+      else next[index] = name;
+      return next;
+    });
+  }
+
+  // The extra lockups actually sent: named, and not the Logo/Icon artboard.
+  const extraMarks = Object.entries(extraTags)
+    .filter(
+      ([i, n]) =>
+        n && n.trim() && Number(i) !== logoArtboard && Number(i) !== iconArtboard
+    )
+    .map(([i, n]) => ({ artboard: Number(i), name: n.trim() }));
 
   function onContinue() {
     if (logoArtboard == null) return;
@@ -138,6 +166,7 @@ export default function App() {
         removed_colors: removed,
         brand_a: logoBoard.brand_a,
         brand_b: logoBoard.brand_b,
+        extra_marks: extraMarks,
       });
       downloadBlob(blob, `${brand} Files.zip`);
       setDone(true);
@@ -153,6 +182,7 @@ export default function App() {
     setResult(null);
     setLogoArtboard(null);
     setIconArtboard(null);
+    setExtraTags({});
     setTagged(false);
     resetSelection();
     setDetecting(false);
@@ -198,7 +228,9 @@ export default function App() {
             primaryIndex={result.primary_index}
             logoArtboard={logoArtboard}
             iconArtboard={iconArtboard}
+            extraTags={extraTags}
             onTag={onTag}
+            onTagExtra={onTagExtra}
             onContinue={onContinue}
           />
         )}
@@ -333,6 +365,11 @@ export default function App() {
                 <div className="mb-3 text-xs text-slate-500">
                   converter: {result.converter} · {logoBoard.is_gradient ? "gradient" : "solid"} recipes
                   {iconBoard ? ` · icon from ${iconBoard.label}` : ""}
+                  {extraMarks.length
+                    ? ` · +${extraMarks.length} lockup${extraMarks.length === 1 ? "" : "s"}: ${extraMarks
+                        .map((m) => m.name)
+                        .join(", ")}`
+                    : ""}
                 </div>
                 <button
                   disabled={busy}
