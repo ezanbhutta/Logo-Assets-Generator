@@ -344,10 +344,11 @@ def test_generate_uses_chosen_artboard(tmp_path):
     assert any("/Logo 01.jpg" in m for m in res.manifest)
 
 
-def test_masters_carry_only_the_selected_artboard(tmp_path):
-    """The delivered .ai/.eps must contain ONLY the artboard the CSR picked — not
-    every artboard in the source (§4, owner override). A 2-artboard source, with
-    artboard index 1 chosen, yields single-page masters."""
+def test_master_ai_mirrors_package_with_variation_artboards(tmp_path):
+    """The delivered .ai is a MULTI-ARTBOARD master mirroring the package (owner
+    rule): the CSR's selected ORIGINAL artboard first, then one artboard per
+    generated variation, each page labeled with its exported name. The UNSELECTED
+    source artboard is never included; the .eps stays single-artboard."""
     from pypdf import PdfReader
     src = _two_artboard_ai(tmp_path)            # real 2-page PDF (== 2-artboard .ai)
     assert len(PdfReader(str(src)).pages) == 2
@@ -357,11 +358,89 @@ def test_masters_carry_only_the_selected_artboard(tmp_path):
         brand="Multi", working_svg=summ.artboards[1].working_svg,
         selection_box=None, ai_path=src, eps_path=eps, artboard_index=1), tmp_path)
     root = res.zip_path.parent / "Multi Files"
-    ai_out = root / "Multi.ai"
-    assert len(PdfReader(str(ai_out)).pages) == 1           # one artboard, not two
-    assert "/PieceInfo" not in PdfReader(str(ai_out)).pages[0]   # native blob stripped
+    reader = PdfReader(str(root / "Multi.ai"))
+    # logo-only set: 6 with-bg + 4 transparent variants, plus the original = 11
+    assert len(reader.pages) == 11
+    labels = list(reader.page_labels)
+    assert labels[0] == "Original"
+    assert "Logo 01" in labels and "Logo 06" in labels
+    assert "Transparent Logo 04" in labels
+    assert "/PieceInfo" not in reader.pages[0]              # native blob stripped
     eps_out = (root / "Multi.eps").read_bytes()
     assert eps_out[:4] == b"%!PS" and b"all artboards" not in eps_out  # re-rendered single board
+
+
+def _blank_pdf(tmp_path, name):
+    from pypdf import PdfWriter
+    p = tmp_path / name
+    w = PdfWriter(); w.add_blank_page(100, 100)
+    with open(p, "wb") as fh:
+        w.write(fh)
+    return p
+
+
+def test_bad_variant_pdf_is_skipped_not_fatal(tmp_path):
+    """One unreadable variant PDF must be SKIPPED — never abort the whole merge
+    (a lazy PdfReader can open fine and still fail at page-tree resolve). The
+    good variants ship; pages and labels stay aligned."""
+    import re
+    from app import masters
+    from pypdf import PdfReader
+    good1 = _blank_pdf(tmp_path, "g1.pdf")
+    good2 = _blank_pdf(tmp_path, "g2.pdf")
+    # a PDF that OPENS but whose catalog points at a dangling /Pages object —
+    # fails only when the page tree is resolved (the nastier failure mode)
+    bad = tmp_path / "bad.pdf"
+    bad.write_bytes(re.sub(rb"(/Pages )(\d+)( 0 R)", rb"\g<1>9\g<3>",
+                           _blank_pdf(tmp_path, "seed.pdf").read_bytes(), count=1))
+    dest = tmp_path / "out.ai"
+    ok = masters.build_variations_ai(
+        None, 0, [("A 01", good1), ("B 01", bad), ("C 01", good2)], dest)
+    assert ok
+    r = PdfReader(str(dest))
+    assert len(r.pages) == 2
+    assert list(r.page_labels) == ["A 01", "C 01"]
+
+
+def test_failed_master_build_leaves_no_partial_file(tmp_path):
+    """A build where NO variant survives returns False and leaves neither a
+    truncated master nor a temp file behind for the zip to pick up."""
+    from app import masters
+    bad = tmp_path / "bad.pdf"; bad.write_bytes(b"not a pdf at all")
+    dest = tmp_path / "out.ai"
+    assert masters.build_variations_ai(None, 0, [("X 01", bad)], dest) is False
+    assert not dest.exists()
+    assert not dest.with_name("out.ai.tmp").exists()
+
+
+def test_non_pdf_source_still_copied_untouched(tmp_path):
+    """A present-but-non-PDF source routed as the master (an .svg upload) keeps
+    the documented fallback: the uploaded original is copied untouched — never
+    silently reclassified as 'no source' and dropped from the package."""
+    from app import masters
+    svg_bytes = b'<svg xmlns="http://www.w3.org/2000/svg"><rect width="9" height="9"/></svg>'
+    src = tmp_path / "s.svg"; src.write_bytes(svg_bytes)
+    good = _blank_pdf(tmp_path, "v.pdf")
+    masters.emit_masters(src, None, 0, tmp_path / "B.ai", tmp_path / "B.eps",
+                         variants=[("Logo 01", good)])
+    assert (tmp_path / "B.ai").read_bytes() == svg_bytes
+
+
+def test_variations_master_built_even_without_source_ai(solid_svg, tmp_path):
+    """With no uploaded .ai at all, the package still carries a master .ai built
+    purely from the variation artboards, in package order, vector throughout."""
+    from pypdf import PdfReader
+    from app.exporters import pdf_is_vector
+    res = _generate(solid_svg, tmp_path)                    # icon + logo, no ai upload
+    ai = res.zip_path.parent / "Acme Files" / "Acme.ai"
+    assert ai.exists()
+    reader = PdfReader(str(ai))
+    # icon 6 + logo 6 with-bg, then transparent icon 3 + logo 4 = 19 artboards
+    assert len(reader.pages) == 19
+    labels = list(reader.page_labels)
+    assert labels[0] == "Icon 01" and "Logo 06" in labels
+    assert labels[-1] == "Transparent Logo 04"
+    assert pdf_is_vector(ai)
 
 
 def test_single_artboard_source_passes_through_untouched(solid_svg, tmp_path):

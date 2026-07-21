@@ -76,19 +76,100 @@ def single_artboard_eps(src_ai: Path, page_index: int, dest: Path) -> bool:
         return False
 
 
+def build_variations_ai(src_ai: Path | None, page_index: int,
+                        variants: list[tuple[str, Path]], dest: Path) -> bool:
+    """Write ``dest`` = a multi-artboard master ``.ai`` mirroring the package
+    (owner rule): the ORIGINAL selected artboard first (when ``src_ai`` is a
+    readable PDF, its native blob stripped), then ONE ARTBOARD PER GENERATED
+    VARIATION — each merged from the variant's already-rendered vector PDF, in
+    package order. Every page gets a PDF page label carrying the variation's
+    exported name (``Logo 01``, ``Transparent Icon 02`` …), so the artboards
+    are identifiable and ordered exactly like the exported files. Illustrator
+    opens each page of a PDF-compatible ``.ai`` as an artboard. Returns True
+    on success; any failure returns False so the caller can fall back."""
+    if not variants:
+        return False
+    try:
+        from pypdf import PdfReader, PdfWriter
+        from pypdf.generic import NameObject
+    except Exception:
+        return False
+    tmp = dest.with_name(dest.name + ".tmp")
+    try:
+        writer = PdfWriter()
+        labels: list[str] = []
+        if src_ai is not None:
+            reader = PdfReader(str(src_ai))       # unreadable -> except -> fallback
+            if not (0 <= page_index < len(reader.pages)):
+                page_index = 0
+            page = reader.pages[page_index]
+            for key in _STRIP_KEYS:
+                if key in page:
+                    del page[NameObject(key)]
+            writer.add_page(page)
+            labels.append("Original")
+        for name, pdf in variants:
+            # The WHOLE per-variant path is guarded: PdfReader is lazy, so a
+            # PDF that opens fine can still fail while resolving its page tree
+            # or cloning a page — one bad variant must never abort the merge.
+            # Partially-added pages/labels are rolled back so pages and labels
+            # can't drift out of alignment.
+            before = len(labels)
+            try:
+                for pg in PdfReader(str(pdf)).pages:
+                    writer.add_page(pg)
+                    labels.append(name)
+            except Exception:
+                while len(labels) > before:
+                    writer.remove_page(len(labels) - 1)
+                    labels.pop()
+        if not labels or labels == ["Original"]:
+            return False                          # no variant made it in
+        for i, name in enumerate(labels):
+            try:
+                writer.set_page_label(i, i, prefix=name)
+            except Exception:
+                pass                              # labels are best-effort
+        # Write to a temp path and swap in atomically, so a mid-write failure
+        # (disk full, late serialization error) can never leave a truncated
+        # master inside the package for the zip to pick up.
+        with open(tmp, "wb") as fh:
+            writer.write(fh)
+        tmp.replace(dest)
+        return dest.exists() and dest.stat().st_size > 0
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        return False
+
+
 def emit_masters(src_ai: Path | None, src_eps: Path | None, page_index: int,
-                 ai_dest: Path, eps_dest: Path) -> None:
+                 ai_dest: Path, eps_dest: Path,
+                 variants: list[tuple[str, Path]] | None = None) -> None:
     """Write the master ``.ai``/``.eps`` into place.
 
-    * Multi-artboard source ``.ai`` → carve out only ``page_index`` for both
-      masters (the ``.eps`` is re-rendered from that page so it can't smuggle the
-      other artboards back in).
-    * Single-artboard or non-PDF source → pass the uploads through untouched
-      (preserves a native single ``.ai``; honors "only the selected artboard"
-      trivially — there is only one)."""
-    multipage = bool(src_ai and src_ai.exists() and _is_multipage_pdf(src_ai))
+    * ``.ai`` — a MULTI-ARTBOARD master mirroring the package (owner rule): the
+      original selected artboard first, then one artboard per generated
+      variation, pages labeled with the exported names. Falls back to the old
+      behavior when the variations master can't be built (no variants, corrupt
+      source): multi-artboard source → carve only ``page_index``; single/non-PDF
+      source → untouched copy. With no uploaded ``.ai`` at all, a variations-only
+      master is still emitted — the package always carries a master.
+    * ``.eps`` — single-page format (no artboard concept): re-rendered from the
+      selected page of a multipage source, else copied untouched."""
+    src_exists = bool(src_ai and src_ai.exists())
+    src_is_pdf = src_exists and _is_pdf(src_ai.read_bytes())
+    # The variations master is attempted only when the source is readable PDF
+    # data (Original page first) or absent entirely (variations-only). A
+    # present-but-non-PDF source (an .svg upload routed as the master) must NOT
+    # be reclassified as "no source" — it falls through to the untouched copy
+    # below, so the uploaded original is always delivered.
+    made_ai = False
+    if src_is_pdf or not src_exists:
+        made_ai = build_variations_ai(src_ai if src_is_pdf else None,
+                                      page_index, variants or [], ai_dest)
 
-    if src_ai and src_ai.exists():
+    multipage = src_exists and _is_multipage_pdf(src_ai)
+    if not made_ai and src_exists:
         if not (multipage and single_artboard_ai(src_ai, page_index, ai_dest)):
             shutil.copy2(src_ai, ai_dest)
 
