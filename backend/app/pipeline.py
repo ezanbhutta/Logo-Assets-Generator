@@ -319,12 +319,16 @@ def _render_set(ctx, mark: str, stem: str, is_gradient: bool, builder: PackageBu
         seen.append(img)
         write_svg(svg, builder.svg / variant_filename(stem, t.index, "svg"))
         write_jpg(svg, builder.jpg / variant_filename(stem, t.index, "jpg"))
-        write_pdf(svg, builder.pdf / variant_filename(stem, t.index, "pdf"))
+        pdf_path = builder.pdf / variant_filename(stem, t.index, "pdf")
+        write_pdf(svg, pdf_path)
+        builder.wb_pdfs.append((f"{stem} {t.index:02d}", pdf_path))
     for t in transparent_recipes(mark):                      # PNG@1080/SVG/PDF, edge-to-edge
         svg = treatments.render_variant(ctx, mark, t, with_background=False)
         write_svg(svg, builder.t_svg / variant_filename(stem, t.index, "svg"))
         write_png_transparent(svg, builder.t_png / variant_filename(stem, t.index, "png"))
-        write_pdf(svg, builder.t_pdf / variant_filename(stem, t.index, "pdf"))
+        t_pdf_path = builder.t_pdf / variant_filename(stem, t.index, "pdf")
+        write_pdf(svg, t_pdf_path)
+        builder.t_pdfs.append((f"Transparent {stem} {t.index:02d}", t_pdf_path))
 
 
 def _icon_artboard_selection(model: WorkingSVG, icon_box) -> Selection:

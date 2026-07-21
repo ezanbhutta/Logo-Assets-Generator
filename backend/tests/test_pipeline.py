@@ -344,10 +344,11 @@ def test_generate_uses_chosen_artboard(tmp_path):
     assert any("/Logo 01.jpg" in m for m in res.manifest)
 
 
-def test_masters_carry_only_the_selected_artboard(tmp_path):
-    """The delivered .ai/.eps must contain ONLY the artboard the CSR picked — not
-    every artboard in the source (§4, owner override). A 2-artboard source, with
-    artboard index 1 chosen, yields single-page masters."""
+def test_master_ai_mirrors_package_with_variation_artboards(tmp_path):
+    """The delivered .ai is a MULTI-ARTBOARD master mirroring the package (owner
+    rule): the CSR's selected ORIGINAL artboard first, then one artboard per
+    generated variation, each page labeled with its exported name. The UNSELECTED
+    source artboard is never included; the .eps stays single-artboard."""
     from pypdf import PdfReader
     src = _two_artboard_ai(tmp_path)            # real 2-page PDF (== 2-artboard .ai)
     assert len(PdfReader(str(src)).pages) == 2
@@ -357,11 +358,33 @@ def test_masters_carry_only_the_selected_artboard(tmp_path):
         brand="Multi", working_svg=summ.artboards[1].working_svg,
         selection_box=None, ai_path=src, eps_path=eps, artboard_index=1), tmp_path)
     root = res.zip_path.parent / "Multi Files"
-    ai_out = root / "Multi.ai"
-    assert len(PdfReader(str(ai_out)).pages) == 1           # one artboard, not two
-    assert "/PieceInfo" not in PdfReader(str(ai_out)).pages[0]   # native blob stripped
+    reader = PdfReader(str(root / "Multi.ai"))
+    # logo-only set: 6 with-bg + 4 transparent variants, plus the original = 11
+    assert len(reader.pages) == 11
+    labels = list(reader.page_labels)
+    assert labels[0] == "Original"
+    assert "Logo 01" in labels and "Logo 06" in labels
+    assert "Transparent Logo 04" in labels
+    assert "/PieceInfo" not in reader.pages[0]              # native blob stripped
     eps_out = (root / "Multi.eps").read_bytes()
     assert eps_out[:4] == b"%!PS" and b"all artboards" not in eps_out  # re-rendered single board
+
+
+def test_variations_master_built_even_without_source_ai(solid_svg, tmp_path):
+    """With no uploaded .ai at all, the package still carries a master .ai built
+    purely from the variation artboards, in package order, vector throughout."""
+    from pypdf import PdfReader
+    from app.exporters import pdf_is_vector
+    res = _generate(solid_svg, tmp_path)                    # icon + logo, no ai upload
+    ai = res.zip_path.parent / "Acme Files" / "Acme.ai"
+    assert ai.exists()
+    reader = PdfReader(str(ai))
+    # icon 6 + logo 6 with-bg, then transparent icon 3 + logo 4 = 19 artboards
+    assert len(reader.pages) == 19
+    labels = list(reader.page_labels)
+    assert labels[0] == "Icon 01" and "Logo 06" in labels
+    assert labels[-1] == "Transparent Logo 04"
+    assert pdf_is_vector(ai)
 
 
 def test_single_artboard_source_passes_through_untouched(solid_svg, tmp_path):

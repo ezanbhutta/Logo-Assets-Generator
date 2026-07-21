@@ -191,14 +191,19 @@ a static table, because slots 02–04 depend on the brand colors. The five slots
 - **Out of scope → flag "manual," refuse** (no partial zip): mesh/freeform
   gradients, embedded raster `<image>`, filters/shadows, in-art transparency,
   spot colors, live (un-outlined) text, integrated lockups.
-- `.ai`/`.eps` masters carry **only the selected artboard** (owner override of the
-  old "untouched pass-through"). Never recolor; RGB only. A PDF-compatible `.ai`
-  stores each artboard as a PDF page **and** a whole-document native (PGF) copy in
-  each page's `/PieceInfo`; `masters.py` extracts the chosen page and **strips that
-  native blob** so Adobe honors the single artboard (it rebuilds from the page's
-  editable vectors), and re-renders the `.eps` from the same page via `pdftops`.
-  Single-artboard or non-PDF sources are still copied **untouched** (a native single
-  `.ai` stays native — nothing to carve).
+- **The master `.ai` MIRRORS THE PACKAGE (owner rule): one artboard per
+  variation.** `masters.build_variations_ai` merges the already-rendered vector
+  PDFs of every variant into one PDF-compatible `.ai`: the CSR's selected
+  ORIGINAL artboard first (native `/PieceInfo` blob stripped so Adobe honors the
+  pages), then every with-bg variant, then every transparent variant, in package
+  order — each page labeled with its exported name (`Logo 01`, `Transparent
+  Icon 02` …; Illustrator opens each PDF page as an artboard). The unselected
+  source artboards are never included. Fallbacks: corrupt/unreadable source →
+  the old behavior (carve the selected page, else untouched copy); **no uploaded
+  `.ai` at all → a variations-only master is still emitted** (the package always
+  carries one). The `.eps` stays **single-artboard** (the format has no artboard
+  concept): re-rendered from the selected page via `pdftops`, else copied
+  untouched. Never recolor; RGB only.
 
 ## Engine behaviors learned from real files (keep these)
 - **Source page background rect** (pdf2svg/Illustrator add one) is detected and
